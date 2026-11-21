@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="pt-BR" class="character-document">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080b12" />
+    <title>Seleção de Personagem — Crônicas do Recomeço</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+  </head>
+  <body class="character-page selection-page">
+    <main class="selection-layout">
+      <header class="character-topbar selection-topbar">
+        <a class="brand character-brand" href="{{ url_for('characters.index') }}">
+          <span class="brand-mark" aria-hidden="true">✦</span>
+          <span><span class="eyebrow">CRÔNICAS DO</span><strong>Recomeço</strong></span>
+        </a>
+        <div class="account-menu">
+          <span class="account-name">{{ g.user['username'] }}</span>
+          {% if is_premium %}<span class="premium-badge">BENEFÍCIO ESPECIAL</span>{% endif %}
+        </div>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}<div class="notice {{ category }} selection-notice">{{ message }}</div>{% endfor %}
+      {% endwith %}
+
+      <div class="selection-zones">
+        <section class="character-stage" aria-label="Prévia do personagem selecionado">
+          <div class="night-scene" aria-hidden="true">
+            <span class="night-moon"></span>
+            <span class="night-ridge ridge-back"></span>
+            <span class="night-ridge ridge-front"></span>
+            <span class="night-ground"></span>
+            <span class="scene-ruin ruin-left"></span>
+            <span class="scene-ruin ruin-right"></span>
+            <span class="scene-mist mist-one"></span>
+            <span class="scene-mist mist-two"></span>
+          </div>
+
+          {% if selected_character %}
+            {% set selected_class = classes[selected_character['class_id']] %}
+            <div class="hero-display class-{{ selected_class['portrait_style'] }}">
+              <div class="hero-aura"></div>
+              <svg class="hero-sprite" viewBox="0 0 320 500" role="img" aria-label="Ilustração de {{ selected_class['name'] }} em repouso">
+                <defs>
+                  <linearGradient id="armor" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stop-color="#77766f" />
+                    <stop offset=".46" stop-color="#343a43" />
+                    <stop offset="1" stop-color="#171c25" />
+                  </linearGradient>
+                  <linearGradient id="cloth" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stop-color="#343943" />
+                    <stop offset="1" stop-color="#10141b" />
+                  </linearGradient>
+                  <radialGradient id="rune-glow">
+                    <stop offset="0" stop-color="var(--class-accent)" stop-opacity=".75" />
+                    <stop offset="1" stop-color="var(--class-accent)" stop-opacity="0" />
+                  </radialGradient>
+                </defs>
+                <ellipse cx="160" cy="474" rx="92" ry="15" fill="#04060a" opacity=".72" />
+                <ellipse cx="160" cy="467" rx="62" ry="9" fill="var(--class-accent)" opacity=".3" />
+                <g class="sprite-idle">
+                  {% if selected_character['class_id'] == 'guardian' %}
+                    <path d="M69 188 L46 257 L64 371 L81 399 L98 304 L91 218Z" fill="#272d35" stroke="#756b57" stroke-width="3" />
+                    <path d="M240 140 L268 90 L278 96 L255 151 L275 158 L270 167 L250 159 L229 205 L220 199 L239 155Z" fill="#bd9a5d" stroke="#e2c07d" stroke-width="2" />
+                    <path d="M247 91 L263 53 L270 96Z" fill="#d7d1c3" stroke="#9b8a66" stroke-width="2" />
+                    <path d="M72 238 L42 268 L51 305 L84 292Z" fill="#3a4148" stroke="#b48a3e" stroke-width="3" />
+                  {% elif selected_character['class_id'] == 'ash_weaver' %}
+                    <path d="M242 364 L253 110 L262 109 L253 366Z" fill="#5d5040" stroke="#b48a3e" stroke-width="3" />
+                    <circle cx="258" cy="94" r="25" fill="url(#rune-glow)" />
+                    <circle cx="258" cy="94" r="9" fill="var(--class-accent)" stroke="#e2c07d" stroke-width="2" />
+                    <path d="M92 170 Q160 137 227 170 L249 348 Q164 394 73 349Z" fill="#272c35" stroke="#5c6574" stroke-width="3" />
+                    <path d="M101 180 L160 215 L216 177 L199 363 L119 363Z" fill="#171b23" stroke="var(--class-accent)" stroke-width="2" />
+                  {% elif selected_character['class_id'] == 'wild_scout' %}
+                    <path d="M240 142 Q303 183 246 241 Q286 196 240 142Z" fill="none" stroke="#9b8052" stroke-width="6" />
+                    <path d="M247 183 L296 183" stroke="#ded0aa" stroke-width="2" />
+                    <path d="M80 205 Q159 150 226 198 L243 326 L218 372 L98 367 L74 310Z" fill="#252f2d" stroke="#657263" stroke-width="3" />
+                    <path d="M100 190 Q162 225 213 190 L200 360 L120 365Z" fill="#141a1b" stroke="#879276" stroke-width="2" />
+                    <path d="M119 193 L75 145 M202 192 L238 149" stroke="#9e8960" stroke-width="8" stroke-linecap="round" />
+                  {% else %}
+                    <path d="M78 215 Q155 166 229 210 L239 332 L211 372 L99 369 L73 318Z" fill="#292530" stroke="#806c8d" stroke-width="3" />
+                    <path d="M87 235 L48 122 L58 117 L118 226Z" fill="#d8d1c4" stroke="#a855f7" stroke-width="3" />
+                    <path d="M228 231 L270 130 L279 135 L246 255Z" fill="#d8d1c4" stroke="#a855f7" stroke-width="3" />
+                    <path d="M123 210 L160 242 L198 207 L194 357 L126 357Z" fill="#19171f" stroke="var(--class-accent)" stroke-width="2" />
+                  {% endif %}
+                  <path d="M112 340 L153 340 L148 432 L124 454 L99 447 L108 390Z" fill="url(#armor)" stroke="#73736e" stroke-width="3" />
+                  <path d="M168 340 L207 338 L215 397 L230 446 L206 457 L183 438 L176 385Z" fill="url(#armor)" stroke="#73736e" stroke-width="3" />
+                  <path d="M97 445 L131 449 L132 462 L91 464Z M204 447 L235 442 L244 459 L203 465Z" fill="#171a20" stroke="#8a7957" stroke-width="2" />
+                  <path d="M102 201 Q87 228 91 275 L106 321 L132 309 L128 239Z" fill="url(#armor)" stroke="#77766f" stroke-width="3" />
+                  <path d="M199 200 Q224 214 228 253 L216 302 L193 292 L191 238Z" fill="url(#armor)" stroke="#77766f" stroke-width="3" />
+                  <path d="M133 181 L186 181 L207 222 L195 338 L123 339 L111 222Z" fill="url(#armor)" stroke="#a58c60" stroke-width="3" />
+                  <path d="M128 202 L160 225 L191 201 L184 312 L137 312Z" fill="#171c24" stroke="var(--class-accent)" stroke-width="2" />
+                  <path d="M134 300 L190 300 L198 324 L126 324Z" fill="#4b4437" stroke="#c2a467" stroke-width="3" />
+                  <circle cx="160" cy="269" r="10" fill="var(--class-accent)" />
+                  <circle cx="160" cy="269" r="22" fill="url(#rune-glow)" />
+                  <path d="M127 113 Q126 71 160 66 Q195 72 194 114 L184 158 L160 178 L137 157Z" fill="#c4b49b" stroke="#746b5b" stroke-width="3" />
+                  <path d="M124 111 Q119 61 160 53 Q201 62 197 111 L179 96 L159 103 L140 96Z" fill="#25282b" stroke="#9a8358" stroke-width="3" />
+                  <path d="M137 128 L151 129 M169 129 L183 127" stroke="#2b2926" stroke-width="4" stroke-linecap="round" />
+                  <path d="M153 151 Q161 157 169 150" fill="none" stroke="#59463b" stroke-width="2" />
+                  <path d="M150 189 L160 203 L171 188" fill="none" stroke="#e2c07d" stroke-width="2" opacity=".8" />
+                </g>
+              </svg>
+              <span class="sprite-state-label">EM REPOUSO</span>
+            </div>
+
+            <section class="selected-info-panel">
+              <span class="scene-kicker">PERSONAGEM SELECIONADO</span>
+              <h1>{{ selected_character['name'] }}</h1>
+              <p>{{ selected_class['name'] }} <span>·</span> {{ selected_class['archetype'] }}</p>
+              <div class="selected-stat-row">
+                <div><span>NÍVEL</span><strong>{{ selected_character['level'] }}</strong></div>
+              </div>
+            </section>
+
+            <form class="center-play-form" method="post" action="{{ url_for('characters.play') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+              <button class="primary-button play-button" type="submit">Jogar <span aria-hidden="true">→</span></button>
+            </form>
+          {% else %}
+            <div class="empty-hero-state">
+              <span class="empty-hero-mark" aria-hidden="true">✦</span>
+              <h1>Escolha o início da sua jornada</h1>
+              <p>Selecione um personagem ou crie um novo no painel.</p>
+            </div>
+          {% endif %}
+        </section>
+
+        <aside class="character-rail" aria-label="Lista de personagens">
+          <div class="rail-heading">
+            <div><span class="scene-kicker">SUA JORNADA</span><h2>Personagens</h2></div>
+            <span class="rail-count">{{ character_count }}<i>/</i>{{ character_limit }}</span>
+          </div>
+
+          <div class="character-slot-list">
+            {% for character in characters %}
+              {% set class_info = classes[character['class_id']] %}
+              <form class="slot-form" method="post" action="{{ url_for('characters.select', character_id=character['id']) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                <button class="character-slot {% if selected_id == character['id'] %}is-active{% endif %}" type="submit" aria-pressed="{{ 'true' if selected_id == character['id'] else 'false' }}">
+                  <span class="slot-portrait portrait-{{ class_info['portrait_style'] }}"><span>{{ class_info['portrait_mark'] }}</span></span>
+                  <span class="slot-copy">
+                    <strong>{{ character['name'] }}</strong>
+                    <span>{{ class_info['name'] }}</span>
+                    <small>Nível {{ character['level'] }}</small>
+                  </span>
+                  {% if selected_id == character['id'] %}<span class="slot-active-mark" aria-label="Selecionado">◆</span>{% endif %}
+                </button>
+              </form>
+            {% endfor %}
+
+            {% if character_count < character_limit %}
+            <a class="create-character-slot" href="{{ url_for('characters.index', criar=1) }}">
+              <span class="create-slot-mark" aria-hidden="true">+</span>
+              <span>Criar Novo Personagem</span>
+            </a>
+            {% else %}
+            <div class="full-slots-note">Todos os espaços para personagens estão ocupados</div>
+            {% endif %}
+          </div>
+
+          <div class="rail-bottom-actions">
+            {% if selected_character %}
+              <a class="danger-button rail-delete-button" href="{{ url_for('characters.delete', character_id=selected_character['id']) }}">Excluir</a>
+            {% else %}
+              <button class="danger-button rail-delete-button" type="button" disabled>Excluir</button>
+            {% endif %}
+            <form method="post" action="{{ url_for('auth.logout') }}" title="Voltar à tela de acesso">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+              <button class="back-button" type="submit">Voltar</button>
+            </form>
+          </div>
+          <p class="stash-footnote">Baú da Conta compartilhado entre personagens ativos. Excluir o último personagem também apaga o baú e seu conteúdo.</p>
+        </aside>
+      </div>
+
+      {% if show_create_form %}
+      <div class="create-modal-backdrop">
+        <section class="create-character-dialog" role="dialog" aria-modal="true" aria-labelledby="create-dialog-title">
+          <a class="dialog-close" href="{{ url_for('characters.index') }}" aria-label="Fechar">×</a>
+          <span class="scene-kicker">NOVO PERSONAGEM</span>
+          <h2 id="create-dialog-title">Dê um nome à sua jornada</h2>
+          <p>Seu herói terá seu próprio progresso e uma classe inicial.</p>
+          <form class="create-character-form" method="post" action="{{ url_for('characters.create') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <label for="character-name">Nome do personagem</label>
+            <input id="character-name" name="name" type="text" minlength="3" maxlength="20" autocomplete="off" placeholder="Digite um nome disponível" required autofocus />
+            <label for="character-class">Classe</label>
+            <select id="character-class" name="class_id" required>
+              {% for class_id, class_info in classes.items() %}
+                <option value="{{ class_id }}">{{ class_info['name'] }} — {{ class_info['archetype'] }}</option>
+              {% endfor %}
+            </select>
+            <button class="primary-button" type="submit">Criar personagem <span aria-hidden="true">→</span></button>
+          </form>
+        </section>
+      </div>
+      {% endif %}
+    </main>
+  </body>
+</html>

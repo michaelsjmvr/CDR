@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Terminal de Vilar — Canvas 2.5D | Névoa, energia e colisão</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#08090e;color:#eee;font:14px system-ui,Segoe UI,sans-serif}
+#stage{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse,#25202f,#08090e 75%)}
+canvas{display:block;width:min(100vw,133.333vh);height:min(75vw,100vh);max-width:100vw;max-height:100vh;aspect-ratio:4/3;box-shadow:0 12px 60px #000;border:1px solid #393044;touch-action:none}
+#hud{position:fixed;left:12px;top:12px;display:flex;gap:7px;flex-wrap:wrap;max-width:calc(100vw - 24px);z-index:2}
+button{border:1px solid #7950a5;background:#171322eF;color:#f2ddff;border-radius:7px;padding:8px 11px;font-weight:650;cursor:pointer;backdrop-filter:blur(8px)}
+button.active,button:hover{background:#6d28a0;color:white}
+#help{position:fixed;right:12px;bottom:12px;max-width:330px;padding:10px 12px;border:1px solid #55436c;border-radius:9px;background:#100d19df;color:#d7cde2;font-size:12px;line-height:1.5}
+#map-editor{position:fixed;z-index:4;left:12px;top:62px;width:min(350px,calc(100vw - 24px));max-height:calc(100vh - 80px);overflow:auto;padding:12px;border:1px solid #554078;border-radius:9px;background:#100d19f2;box-shadow:0 12px 40px #0009;font-size:12px}
+#map-editor[hidden]{display:none}
+#map-editor h2{font-size:16px}
+.editor-header,.editor-row,.editor-actions{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.editor-help{margin:8px 0;color:#c9bdd5;line-height:1.45}
+.editor-fieldset{margin:9px 0;padding:8px;border:1px solid #42384f;border-radius:7px}
+.editor-fieldset legend{padding:0 4px;color:#d8b4fe}
+.editor-fieldset label{display:grid;gap:4px;margin:6px 0;color:#c9c4d2}
+.editor-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px 8px}
+.editor-fieldset input,#collider-list{width:100%;min-height:30px;padding:4px 7px;border:1px solid #494052;border-radius:5px;background:#15121c;color:#f4f1f8}
+#collider-list{min-height:96px}
+.editor-actions button{flex:1}
+#editor-status{min-height:18px;margin-top:8px;color:#c4b5fd}
+#editor-status[data-kind="error"]{color:#fca5a5}
+#editor-status[data-kind="success"]{color:#86efac}
+button:disabled{cursor:wait;opacity:.6}
+@media(max-width:650px){#help{display:none}button{padding:7px 9px;font-size:11px}}
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="gameCanvas" width="2400" height="1800" aria-label="Mapa interativo do Terminal de Vilar"></canvas></div>
+<div id="hud">
+<button id="effectsBtn" class="active">Ambiente: ligado</button><button id="resetBtn">Voltar ao spawn</button><button id="debugBtn">Zonas (G): desligado</button>
+{% if map_editor_enabled %}<button id="btnEditor" type="button" aria-expanded="false">Editar mapa</button>{% endif %}
+</div>
+{% if map_editor_enabled %}
+<aside id="map-editor" hidden aria-label="Editor de colisões e limites do Terminal de Vilar" data-csrf-token="{{ csrf_token() }}">
+ <div class="editor-header"><h2>Editor da Fase 1</h2><button id="close-editor" type="button">Fechar</button></div>
+ <p class="editor-help">Edite os colisores retangulares do backend na planta. As marcações de polígonos e paredes desta arte continuam fixas. O mundo permanece 2.400 × 1.800 unidades.</p>
+ <div class="editor-actions"><button id="add-collider" type="button">Adicionar</button><button id="delete-collider" type="button">Remover</button></div>
+ <label for="collider-list">Colisores retangulares</label>
+ <select id="collider-list" size="5" aria-label="Selecionar colisor retangular"></select>
+ <fieldset class="editor-fieldset" id="collider-fields"><legend>Colisor retangular</legend>
+  <label>ID<input id="collider-id" type="text" maxlength="64" autocomplete="off"></label>
+  <div class="editor-grid">
+   <label>Centro X<input data-collider-field="x" type="number" step="1"></label>
+   <label>Centro Y<input data-collider-field="y" type="number" step="1"></label>
+   <label>Largura<input data-collider-field="width" type="number" min="1" step="1"></label>
+   <label>Altura<input data-collider-field="height" type="number" min="1" step="1"></label>
+   <label>Ângulo (graus)<input id="collider-angle" type="number" min="-180" max="180" step="1"></label>
+  </div>
+ </fieldset>
+ <fieldset class="editor-fieldset"><legend>Limite de movimento</legend><div class="editor-grid">
+  <label>Mín. X<input data-bound="player_bounds" data-axis="min_x" type="number" step="1"></label>
+  <label>Máx. X<input data-bound="player_bounds" data-axis="max_x" type="number" step="1"></label>
+  <label>Mín. Y<input data-bound="player_bounds" data-axis="min_y" type="number" step="1"></label>
+  <label>Máx. Y<input data-bound="player_bounds" data-axis="max_y" type="number" step="1"></label>
+ </div></fieldset>
+ <fieldset class="editor-fieldset"><legend>Área de spawn</legend><div class="editor-grid">
+  <label>Mín. X<input data-bound="spawn_bounds" data-axis="min_x" type="number" step="1"></label>
+  <label>Máx. X<input data-bound="spawn_bounds" data-axis="max_x" type="number" step="1"></label>
+  <label>Mín. Y<input data-bound="spawn_bounds" data-axis="min_y" type="number" step="1"></label>
+  <label>Máx. Y<input data-bound="spawn_bounds" data-axis="max_y" type="number" step="1"></label>
+ </div></fieldset>
+ <div class="editor-actions"><button id="save-map" type="button">Salvar no projeto</button><button id="discard-map" type="button">Descartar</button></div>
+ <p id="editor-status" role="status" aria-live="polite"></p>
+</aside>
+{% endif %}
+
+<script id="terminal-vilar-map-config" type="application/json">{{ terminal_vilar_map_config|tojson }}</script>
+<script>
+(() => {
+"use strict";
+const mapConfig=JSON.parse(document.getElementById("terminal-vilar-map-config").textContent);
+const WORLD=mapConfig.world;
+const canvas=document.getElementById("gameCanvas"),ctx=canvas.getContext("2d",{alpha:false});
+const mapImage=new Image();
+mapImage.src="{{ url_for('static', filename='images/maps/terminal_vilar_fase1.jpg', v='0.139') }}";
+let imageReady=false,effects=true,debug=false,lastTime=0,elapsed=0,editorActive=false,previousEditorDebug=false;
+mapImage.onload=()=>{imageReady=true;buildEnergy();};
+const SPAWN={x:1200,y:1260};
+const player={x:SPAWN.x,y:SPAWN.y,radius:22,speed:245,visible:true};
+const keys=new Set();
+
+/* =====================================================================
+   ZONAS EXTRAÍDAS DA SUA IMAGEM MARCADA (coordenadas do mundo 2400x1800)
+   Amarelo = névoa suave  |  Vermelho = energia viva  |  Azul = colisão
+   ===================================================================== */
+// Zona vermelha: onde a energia ganha vida.
+const ENERGY_ZONE=[[773,-12],[742,64],[751,115],[788,151],[914,227],[1116,291],[1462,306],[1580,303],[1712,245],[1769,118],[1778,-12],[1790,-63],[761,-63]];
+// Zonas amarelas: onde a névoa flutua.
+const FOG_ZONES=[
+ {id:"topo-esquerda",poly:[[-16,100],[-16,79],[8,61],[98,70],[113,88],[137,167],[161,185],[212,182],[297,136],[372,121],[417,160],[477,248],[480,272],[447,278],[375,263],[167,260],[20,233],[-19,164],[-19,103]]},
+ {id:"rua-esquerda",poly:[[212,472],[411,493],[474,548],[589,557],[604,572],[604,593],[556,602],[402,593],[309,638],[182,641],[164,672],[185,608],[191,617],[200,599]]},
+ {id:"topo-direita",poly:[[2393,85],[2372,85],[2257,133],[2040,245],[1971,260],[1932,278],[1899,309],[1899,327],[1926,339],[2170,354],[2179,381],[2158,418],[2070,475],[1896,542],[1860,596],[2007,605],[2170,641],[2224,663],[2224,294],[2405,257]]},
+ {id:"baixo-esquerda",poly:[[2,1265],[116,1274],[110,1349],[131,1370],[179,1382],[212,1407],[219,1485],[234,1525],[188,1537],[20,1540],[-1,1561]]},
+ {id:"baixo-direita",poly:[[2393,1252],[2354,1243],[2326,1265],[2323,1298],[2338,1325],[2329,1352],[2188,1385],[2134,1416],[2092,1425],[2079,1440],[2137,1452],[2314,1552],[2396,1576],[2405,1564],[2408,1446],[2396,1255]]}
+];
+const BLUE_SOLIDS=mapConfig.solid_polygons.map(({id,points})=>({id,p:points}));
+const BLUE_WALLS=mapConfig.collision_walls;
+const LEGACY_COLLIDERS=mapConfig.colliders;
+const legacyRect = (id,x,y,width,height,angle=0) => {
+ const a=angle||0,c=Math.cos(a),sn=Math.sin(a);
+ return {id,p:[[-width/2,-height/2],[width/2,-height/2],[width/2,height/2],[-width/2,height/2]].map(([px,py])=>[x+px*c-py*sn,y+px*sn+py*c])};
+};
+const backendColliders=()=>LEGACY_COLLIDERS.map((c,i)=>{
+ if(Array.isArray(c.p)) return c;
+ const x=Number(c.x),y=Number(c.y),w=Number(c.width),h=Number(c.height),a=Number(c.angle)||0;
+ return Number.isFinite(x+y+w+h) ? legacyRect(c.id||`legacy_${i}`,x,y,w,h,a) : null;
+}).filter(Boolean);
+const collisionWalls=BLUE_WALLS;
+const WALL_THICKNESS=mapConfig.wall_thickness;
+const currentColliders=()=>[...BLUE_SOLIDS,...backendColliders()];
+const PLAYER_BOUNDS={
+ get minX(){return mapConfig.player_bounds.min_x},
+ get maxX(){return mapConfig.player_bounds.max_x},
+ get minY(){return mapConfig.player_bounds.min_y},
+ get maxY(){return mapConfig.player_bounds.max_y}
+};
+
+const foreground=[
+ {id:"bus-top-left",poly:[[0,130],[470,140],[485,490],[0,470]],foot:500},
+ {id:"bus-left",poly:[[110,710],[430,730],[455,1190],[390,1290],[190,1280],[150,1180]],foot:1300},
+ {id:"bus-right",poly:[[1900,690],[2250,690],[2290,1220],[2190,1290],[1990,1250],[1900,1160]],foot:1300},
+ {id:"bus-bottom-center",poly:[[1210,1370],[1810,1370],[1830,1640],[1250,1650]],foot:1660},
+ {id:"bus-bottom-left",poly:[[800,1540],[1430,1540],[1450,1800],[820,1800]],foot:1800},
+ {id:"bus-bottom-right",poly:[[1860,1400],[2400,1400],[2400,1800],[1900,1800]],foot:1800},
+ {id:"canopy",poly:[[730,345],[1690,345],[1690,510],[730,510]],foot:540},
+ {id:"pillar-a",poly:[[760,500],[850,500],[850,740],[760,740]],foot:750},
+ {id:"pillar-b",poly:[[1030,500],[1120,500],[1120,740],[1030,740]],foot:750},
+ {id:"pillar-c",poly:[[1350,500],[1440,500],[1440,740],[1350,740]],foot:750},
+ {id:"pillar-d",poly:[[1620,500],[1710,500],[1710,740],[1620,740]],foot:750},
+ {id:"front-pillar-a",poly:[[750,820],[850,820],[850,1110],[750,1110]],foot:1120},
+ {id:"front-pillar-b",poly:[[1000,820],[1100,820],[1100,1110],[1000,1110]],foot:1120},
+ {id:"front-pillar-c",poly:[[1320,820],[1420,820],[1420,1110],[1320,1110]],foot:1120},
+ {id:"front-pillar-d",poly:[[1630,820],[1730,820],[1730,1110],[1630,1110]],foot:1120}
+];
+const puddles=[
+ // Poças alinhadas às marcações vermelhas da referência (coordenadas do mundo 2400x1800).
+ {x:525,y:914,rx:112,ry:48,phase:.2},{x:872,y:888,rx:132,ry:58,phase:1.1},
+ {x:1504,y:795,rx:112,ry:45,phase:2.0},{x:875,y:1260,rx:148,ry:64,phase:.7},
+ {x:1495,y:1290,rx:140,ry:62,phase:1.8},{x:1935,y:1355,rx:118,ry:58,phase:2.6},
+ {x:478,y:1400,rx:128,ry:58,phase:1.4}
+];
+const lamps=[{x:570,y:390},{x:1840,y:390},{x:710,y:1430},{x:1760,y:1430}];
+function pointInPoly(x,y,poly){let inside=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const a=poly[i],b=poly[j];if(((a[1]>y)!==(b[1]>y))&&(x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0]))inside=!inside;}return inside;}
+function distSegSq(px,py,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,l=dx*dx+dy*dy;let t=l?((px-ax)*dx+(py-ay)*dy)/l:0;t=Math.max(0,Math.min(1,t));const x=ax+t*dx,y=ay+t*dy;return (px-x)**2+(py-y)**2;}
+function circleHitsPoly(x,y,r,poly){if(pointInPoly(x,y,poly))return true;for(let i=0;i<poly.length;i++){const a=poly[i],b=poly[(i+1)%poly.length];if(distSegSq(x,y,a[0],a[1],b[0],b[1])<r*r)return true;}return false;}
+function isBlocked(x,y,r=player.radius){
+ if(x-r<PLAYER_BOUNDS.minX||y-r<PLAYER_BOUNDS.minY||x+r>PLAYER_BOUNDS.maxX||y+r>PLAYER_BOUNDS.maxY)return true;
+ if(currentColliders().some(c=>circleHitsPoly(x,y,r,c.p)))return true;
+ return collisionWalls.some(w=>w.points.slice(1).some((b,i)=>distSegSq(x,y,w.points[i][0],w.points[i][1],b[0],b[1])<(r+WALL_THICKNESS)**2));
+}
+function moveEntity(entity,dx,dy,r=entity.radius||player.radius){
+ // Subpassos impedem atravessar obstáculos mesmo com delta grande.
+ const maxStep=Math.max(2,r*.35),steps=Math.max(1,Math.ceil(Math.hypot(dx,dy)/maxStep));
+ const sx=dx/steps,sy=dy/steps;let movedX=0,movedY=0;
+ for(let i=0;i<steps;i++){
+  if(!isBlocked(entity.x+sx,entity.y,r)){entity.x+=sx;movedX+=sx;}
+  if(!isBlocked(entity.x,entity.y+sy,r)){entity.y+=sy;movedY+=sy;}
+ }
+ return {x:entity.x,y:entity.y,movedX,movedY,blockedX:Math.abs(movedX-dx)>.01,blockedY:Math.abs(movedY-dy)>.01};
+}
+function worldPoly(poly){ctx.beginPath();poly.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();}
+function drawWater(t){
+ // Água viva nas sete poças: brilho, reflexo de néon, ondulações e micro-respingos.
+ for(const p of puddles){
+  ctx.save();ctx.translate(p.x,p.y);ctx.rotate(Math.sin(t*.35+p.phase)*.035);
+  ctx.globalCompositeOperation="screen";
+  const shimmer=.72+.28*Math.sin(t*2.1+p.phase);
+  const glow=ctx.createRadialGradient(-p.rx*.12,-p.ry*.2,3,0,0,p.rx*1.05);
+  glow.addColorStop(0,`rgba(220,155,255,${.28*shimmer})`);
+  glow.addColorStop(.38,`rgba(147,67,211,${.19*shimmer})`);
+  glow.addColorStop(.78,"rgba(80,47,126,.10)");glow.addColorStop(1,"rgba(80,47,126,0)");
+  ctx.fillStyle=glow;ctx.beginPath();ctx.ellipse(0,0,p.rx,p.ry,0,0,Math.PI*2);ctx.fill();
+  // Reflexos alongados, como luzes da cidade refletidas no asfalto molhado.
+  for(let k=0;k<5;k++){
+   const xx=Math.sin(t*.75+k*2.4+p.phase)*p.rx*.48;
+   const yy=Math.cos(t*.6+k*1.7+p.phase)*p.ry*.38;
+   ctx.strokeStyle=`rgba(${k%2?185:235},${k%2?132:205},255,${.12+.10*shimmer})`;
+   ctx.lineWidth=2+(k%2);ctx.beginPath();ctx.moveTo(xx-p.rx*.16,yy);
+   ctx.quadraticCurveTo(xx,yy-4,xx+p.rx*.17,yy+Math.sin(t*2+k)*3);ctx.stroke();
+  }
+  // Anéis de chuva expandindo a partir de pontos diferentes da superfície.
+  for(let k=0;k<3;k++){
+   const phase=(t*.42+k/3+p.phase*.13)%1;
+   const cx=Math.sin(k*8.3+p.phase)*p.rx*.42,cy=Math.cos(k*4.1+p.phase)*p.ry*.36;
+   ctx.strokeStyle=`rgba(226,195,255,${.34*(1-phase)})`;ctx.lineWidth=1.8;
+   ctx.beginPath();ctx.ellipse(cx,cy,4+phase*p.rx*.31,2+phase*p.ry*.34,0,0,Math.PI*2);ctx.stroke();
+  }
+  ctx.restore();
+ }
+}
+
+/* =====================================================================
+   UTILITÁRIOS DE EFEITO (ruído, blur, aleatório determinístico)
+   ===================================================================== */
+function makeCanvas(w,h){const c=document.createElement("canvas");c.width=Math.max(1,Math.round(w));c.height=Math.max(1,Math.round(h));return c;}
+function rng32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function hash2(x,y,s){let h=Math.imul(x,374761393)^Math.imul(y,668265263)^Math.imul(s,1442695041);h=Math.imul(h^(h>>>13),1274126177);return((h^(h>>>16))>>>0)/4294967296;}
+function periodicNoise(x,y,period,seed){
+ const xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi,u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf);
+ const xa=((xi%period)+period)%period,xb=(xa+1)%period,ya=((yi%period)+period)%period,yb=(ya+1)%period;
+ const a=hash2(xa,ya,seed),b=hash2(xb,ya,seed),c=hash2(xa,yb,seed),d=hash2(xb,yb,seed);
+ return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v;
+}
+// Blur de caixa só no canal alfa (feather das zonas). Funciona em qualquer navegador (sem ctx.filter).
+function featherCanvas(c,r,passes){
+ const x=c.getContext("2d"),w=c.width,h=c.height,img=x.getImageData(0,0,w,h),d=img.data,n=w*h;
+ let a=new Float32Array(n),t=new Float32Array(n);
+ for(let i=0;i<n;i++)a[i]=d[i*4+3];
+ const win=2*r+1;
+ for(let p=0;p<passes;p++){
+  for(let y=0;y<h;y++){const row=y*w;let s=0;
+   for(let k=-r;k<=r;k++)s+=a[row+Math.min(w-1,Math.max(0,k))];
+   for(let i=0;i<w;i++){t[row+i]=s/win;s+=a[row+Math.min(w-1,i+r+1)]-a[row+Math.max(0,i-r)];}}
+  for(let i=0;i<w;i++){let s=0;
+   for(let k=-r;k<=r;k++)s+=t[Math.min(h-1,Math.max(0,k))*w+i];
+   for(let y=0;y<h;y++){a[y*w+i]=s/win;s+=t[Math.min(h-1,y+r+1)*w+i]-t[Math.max(0,y-r)*w+i];}}
+ }
+ for(let i=0;i<n;i++){d[i*4]=255;d[i*4+1]=255;d[i*4+2]=255;d[i*4+3]=a[i];}
+ x.putImageData(img,0,0);
+}
+// Halo suave: reduz pela metade N vezes e volta (bilinear), barato e portátil.
+function softCanvas(src,levels){
+ let c=src;
+ for(let i=0;i<levels;i++){const n=makeCanvas(Math.max(2,c.width>>1),Math.max(2,c.height>>1));const x=n.getContext("2d");x.imageSmoothingEnabled=true;x.drawImage(c,0,0,n.width,n.height);c=n;}
+ for(let i=levels-1;i>=0;i--){const tw=i===0?src.width:Math.round(src.width/(1<<i)),th=i===0?src.height:Math.round(src.height/(1<<i));const n=makeCanvas(tw,th);const x=n.getContext("2d");x.imageSmoothingEnabled=true;x.drawImage(c,0,0,tw,th);c=n;}
+ return c;
+}
+
+/* =====================================================================
+   NÉVOA SUAVE (amarelo)
+   Nuvens de ruído fractal em 3 camadas que derivam em velocidades diferentes,
+   recortadas pelas zonas amarelas com borda esfumaçada.
+   ===================================================================== */
+const FOG={scale:.25,ready:false};
+function buildFog(){
+ FOG.w=Math.round(WORLD.width*FOG.scale);FOG.h=Math.round(WORLD.height*FOG.scale);
+ // máscara das zonas amarelas
+ const m=makeCanvas(FOG.w,FOG.h),mx=m.getContext("2d");
+ mx.fillStyle="#fff";
+ for(const z of FOG_ZONES){mx.beginPath();z.poly.forEach(([x,y],i)=>i?mx.lineTo(x*FOG.scale,y*FOG.scale):mx.moveTo(x*FOG.scale,y*FOG.scale));mx.closePath();mx.fill();}
+ featherCanvas(m,7,3);
+ FOG.mask=m;
+ // textura de nuvem repetível
+ const size=256,tile=makeCanvas(size,size),tx=tile.getContext("2d"),img=tx.createImageData(size,size),d=img.data;
+ for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+  let n=0,amp=.5,tot=0;
+  for(let o=0;o<4;o++){const cells=4<<o;n+=amp*periodicNoise(x/size*cells,y/size*cells,cells,11+o*7);tot+=amp;amp*=.5;}
+  n/=tot;
+  let a=Math.max(0,Math.min(1,(n-.36)/.46));a=a*a*(3-2*a);
+  const i=(y*size+x)*4;d[i]=176;d[i+1]=172;d[i+2]=206;d[i+3]=a*255;
+ }
+ tx.putImageData(img,0,0);
+ FOG.layer=makeCanvas(FOG.w,FOG.h);FOG.lctx=FOG.layer.getContext("2d");
+ FOG.pattern=FOG.lctx.createPattern(tile,"repeat");
+ FOG.ready=true;
+}
+function drawFog(t){
+ if(!FOG.ready)return;
+ const L=FOG.lctx;
+ L.setTransform(1,0,0,1,0,0);L.globalCompositeOperation="source-over";L.globalAlpha=1;L.clearRect(0,0,FOG.w,FOG.h);
+ const layers=[
+  {s:1.75,vx:4.0,vy:.9,rot:0,a:.62,ph:0},
+  {s:1.05,vx:-3.2,vy:1.6,rot:.35,a:.50,ph:1.7},
+  {s:.62,vx:6.0,vy:-.8,rot:-.22,a:.32,ph:3.1}
+ ];
+ for(const ly of layers){
+  const c=Math.cos(ly.rot)*ly.s,s=Math.sin(ly.rot)*ly.s;
+  L.setTransform(c,s,-s,c,t*ly.vx,t*ly.vy+Math.sin(t*.17+ly.ph)*7);
+  L.globalAlpha=ly.a*(.9+.1*Math.sin(t*.29+ly.ph*2));
+  L.fillStyle=FOG.pattern;L.fillRect(-4000,-4000,8000,8000);
+ }
+ L.setTransform(1,0,0,1,0,0);L.globalAlpha=1;L.globalCompositeOperation="destination-in";L.drawImage(FOG.mask,0,0);
+ ctx.save();ctx.globalCompositeOperation="screen";ctx.globalAlpha=.50;ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
+ ctx.drawImage(FOG.layer,0,0,WORLD.width,WORLD.height);
+ ctx.restore();
+}
+buildFog();
+
+/* =====================================================================
+   ENERGIA VIVA (vermelho)
+   Tudo é desenhado dentro da zona vermelha, sobre os pixels violeta REAIS da arte:
+   respiração, pulsos de corrente percorrendo as rachaduras, descargas elétricas
+   procedurais (raios com ramificações), microfaíscas, fagulhas e fumaça subindo
+   das duas crateras, mais luz pulsando no chão ao redor.
+   ===================================================================== */
+// Crateras em pixels da arte original (1200x896).
+const CRATERS_MAP=[{x:540,y:48,rx:125,ry:32,rate:15},{x:778,y:70,rx:70,ry:25,rate:10}];
+const EN={ready:false,strikes:[],nextStrike:.9,sparks:[],smoke:[],lastT:0};
+function buildEnergy(){
+ const mw=mapImage.naturalWidth,mh=mapImage.naturalHeight;
+ const sx=WORLD.width/mw,sy=WORLD.height/mh;
+ const xs=ENERGY_ZONE.map(p=>p[0]/sx),ys=ENERGY_ZONE.map(p=>p[1]/sy);
+ const x0=Math.max(0,Math.floor(Math.min(...xs))-8),x1=Math.min(mw,Math.ceil(Math.max(...xs))+8);
+ const y0=0,y1=Math.min(mh,Math.ceil(Math.max(...ys))+8);
+ const w=x1-x0,h=y1-y0;
+ Object.assign(EN,{x0,y0,w,h,sx,sy});
+ EN.zone=ENERGY_ZONE.map(([X,Y])=>[X/sx-x0,Y/sy-y0]);
+ EN.craters=CRATERS_MAP.map((c,i)=>({...c,i,x:c.x-x0,y:c.y-y0,pts:[]}));
+ EN.emit=EN.craters.map(()=>0);EN.smokeEmit=EN.craters.map(()=>0);
+ // máscara da zona com borda suave
+ const zm=makeCanvas(w,h),zx=zm.getContext("2d");zx.fillStyle="#fff";
+ zx.beginPath();EN.zone.forEach(([x,y],i)=>i?zx.lineTo(x,y):zx.moveTo(x,y));zx.closePath();zx.fill();
+ featherCanvas(zm,4,3);EN.zoneMask=zm;
+ // recorta os pixels violeta da própria arte
+ const src=makeCanvas(w,h),sctx=src.getContext("2d");sctx.drawImage(mapImage,x0,y0,w,h,0,0,w,h);
+ const px=sctx.getImageData(0,0,w,h).data;
+ const bolt=sctx.createImageData(w,h),core=sctx.createImageData(w,h),B=bolt.data,C=core.data,pts=[];
+ for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+  if(!pointInPoly(x,y,EN.zone))continue;
+  const i=(y*w+x)*4,r=px[i],g=px[i+1],b=px[i+2];
+  if(b>140&&r>105&&b>g*1.35&&r>g*1.15&&(r+b)>300){
+   B[i]=Math.min(255,r*1.05);B[i+1]=g*.85;B[i+2]=Math.min(255,b*1.12);B[i+3]=Math.min(255,(r+b-290)*2.4);
+  }
+  if(b>200&&r>170&&g>110){
+   C[i]=255;C[i+1]=Math.min(255,g+70);C[i+2]=255;C[i+3]=Math.min(255,(g-100)*4.5);
+   if((x*7+y*13)%5===0)pts.push({x,y});
+  }
+ }
+ EN.bolt=makeCanvas(w,h);EN.bolt.getContext("2d").putImageData(bolt,0,0);
+ EN.core=makeCanvas(w,h);EN.core.getContext("2d").putImageData(core,0,0);
+ EN.glowTight=softCanvas(EN.bolt,2);EN.glowWide=softCanvas(EN.bolt,4);
+ EN.points=pts;
+ for(const c of EN.craters)c.pts=pts.filter(p=>((p.x-c.x)/(c.rx*1.3))**2+((p.y-c.y)/(c.ry*2.4))**2<1);
+ EN.layer=makeCanvas(w,h);EN.lctx=EN.layer.getContext("2d");
+ EN.ready=true;
+}
+function boltPath(r,x0,y0,x1,y1,disp){
+ let pts=[[x0,y0],[x1,y1]],d=disp;
+ for(let pass=0;pass<4;pass++){
+  const np=[pts[0]];
+  for(let i=1;i<pts.length;i++){
+   const a=pts[i-1],b=pts[i],dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy)||1,o=(r()-.5)*2*d;
+   np.push([(a[0]+b[0])/2-dy/len*o,(a[1]+b[1])/2+dx/len*o],b);
+  }
+  pts=np;d*=.55;
+ }
+ return pts;
+}
+function strokeBolt(L,pts,a){
+ if(a<=.01)return;
+ L.lineCap="round";L.lineJoin="round";
+ const pass=[[8,.10,"#9b3bff"],[4,.28,"#c56bff"],[1.9,.72,"#f0c8ff"],[.9,1,"#ffffff"]];
+ for(const [lw,al,col] of pass){
+  L.globalAlpha=Math.min(1,al*a*1.2);L.strokeStyle=col;L.lineWidth=lw;
+  L.beginPath();pts.forEach((p,i)=>i?L.lineTo(p[0],p[1]):L.moveTo(p[0],p[1]));L.stroke();
+ }
+}
+function spawnStrike(t){
+ const c=EN.craters[Math.random()<.62?0:1];
+ const o=c.pts.length?c.pts[Math.floor(Math.random()*c.pts.length)]:{x:c.x,y:c.y};
+ const bolts=[],n=2+Math.floor(Math.random()*2);
+ for(let k=0;k<n;k++){
+  const ang=Math.random()<.6?-Math.PI/2+(Math.random()-.5)*1.5:Math.atan2(o.y-c.y,o.x-c.x)+(Math.random()-.5)*1.1;
+  let len=55+Math.random()*115,tx=o.x+Math.cos(ang)*len,ty=o.y+Math.sin(ang)*len,tries=0;
+  while(tries++<6&&!pointInPoly(tx,ty,EN.zone)){len*=.72;tx=o.x+Math.cos(ang)*len;ty=o.y+Math.sin(ang)*len;}
+  bolts.push({x0:o.x,y0:o.y,x1:tx,y1:ty,w:k===0?1:.65});
+ }
+ EN.strikes.push({t0:t,dur:.30+Math.random()*.30,seed:Math.random()*100,sid:(Math.random()*1e9)|0,bolts});
+}
+function updateStrikes(t){
+ if(t>=EN.nextStrike){spawnStrike(t);EN.nextStrike=t+1.0+Math.random()*2.4;}
+ let flash=0;
+ for(let i=EN.strikes.length-1;i>=0;i--){
+  const s=EN.strikes[i],age=t-s.t0;
+  if(age>s.dur||age<0){EN.strikes.splice(i,1);continue;}
+  flash=Math.max(flash,Math.pow(1-age/s.dur,.7)*(.55+.45*Math.sin(age*70+s.seed)));
+ }
+ return Math.max(0,flash);
+}
+function drawStrikes(L,t){
+ for(const s of EN.strikes){
+  const age=t-s.t0,env=Math.pow(1-age/s.dur,.6)*(.6+.4*Math.sin(age*70+s.seed));
+  if(env<=0)continue;
+  const step=Math.floor(age*22);
+  s.bolts.forEach((b,bi)=>{
+   const r=rng32(s.sid+step*131+bi*17),L0=Math.hypot(b.x1-b.x0,b.y1-b.y0);
+   const pts=boltPath(r,b.x0,b.y0,b.x1,b.y1,L0*.22);
+   strokeBolt(L,pts,env*b.w);
+   for(let k=0;k<2;k++){
+    const p=pts[2+Math.floor(r()*Math.max(1,pts.length-4))],a=Math.atan2(b.y1-b.y0,b.x1-b.x0)+(r()-.5)*1.8,l=18+r()*40;
+    strokeBolt(L,boltPath(r,p[0],p[1],p[0]+Math.cos(a)*l,p[1]+Math.sin(a)*l,l*.25),env*b.w*.6);
+   }
+  });
+ }
+}
+function drawMicroArcs(L,t,I){
+ if(!EN.points.length)return;
+ const r=rng32(Math.floor(t*14)*7919+13);
+ for(let k=0;k<6;k++){
+  const keep=r()<.55,p=EN.points[Math.floor(r()*EN.points.length)],a=r()*6.283,l=10+r()*22;
+  if(!keep)continue;
+  strokeBolt(L,boltPath(r,p.x,p.y,p.x+Math.cos(a)*l,p.y+Math.sin(a)*l,l*.35),.55*Math.min(1,I));
+ }
+}
+function updateParticles(dt,I){
+ EN.craters.forEach(c=>{
+  EN.emit[c.i]+=dt*c.rate*(.6+I);
+  while(EN.emit[c.i]>=1){EN.emit[c.i]--;
+   if(c.pts.length&&EN.sparks.length<180){const p=c.pts[Math.floor(Math.random()*c.pts.length)];
+    EN.sparks.push({x:p.x+(Math.random()-.5)*5,y:p.y,vx:(Math.random()-.5)*18,vy:-(14+Math.random()*36),age:0,max:.8+Math.random()*1.4,sz:.8+Math.random()*1.3});}}
+  EN.smokeEmit[c.i]+=dt*2.2;
+  while(EN.smokeEmit[c.i]>=1){EN.smokeEmit[c.i]--;
+   if(EN.smoke.length<40)EN.smoke.push({x:c.x+(Math.random()-.5)*c.rx*1.3,y:c.y+(Math.random()-.5)*c.ry*.9,vx:(Math.random()-.5)*5,vy:-(5+Math.random()*9),age:0,max:2.6+Math.random()*2.2,r:11+Math.random()*13});}
+ });
+ for(const a of [EN.sparks,EN.smoke])for(let i=a.length-1;i>=0;i--){
+  const p=a[i];p.age+=dt;if(p.age>p.max){a.splice(i,1);continue;}
+  p.x+=p.vx*dt;p.y+=p.vy*dt;p.vx+=(Math.random()-.5)*30*dt;
+ }
+}
+function drawParticles(L){
+ for(const p of EN.smoke){
+  const u=p.age/p.max,al=Math.sin(Math.PI*u)*.085,r=p.r*(1+u*.9);
+  const g=L.createRadialGradient(p.x,p.y,0,p.x,p.y,r);
+  g.addColorStop(0,`rgba(165,85,240,${al})`);g.addColorStop(1,"rgba(110,40,190,0)");
+  L.globalAlpha=1;L.fillStyle=g;L.fillRect(p.x-r,p.y-r,r*2,r*2);
+ }
+ for(const p of EN.sparks){
+  const u=p.age/p.max,al=(1-u)*(.6+.4*Math.sin(p.age*40+p.x));
+  L.globalAlpha=Math.max(0,al);L.fillStyle="#f6d6ff";
+  L.fillRect(p.x-p.sz/2,p.y-p.sz/2,p.sz,p.sz);
+  L.globalAlpha=Math.max(0,al*.35);L.fillStyle="#c070ff";
+  L.fillRect(p.x-p.sz,p.y-p.sz,p.sz*2,p.sz*2);
+ }
+}
+function drawEnergy(t){
+ if(!EN.ready)return;
+ const dt=Math.max(0,Math.min(.05,t-EN.lastT));EN.lastT=t;
+ const L=EN.lctx;
+ L.setTransform(1,0,0,1,0,0);L.globalAlpha=1;L.globalCompositeOperation="source-over";L.clearRect(0,0,EN.w,EN.h);
+ L.globalCompositeOperation="lighter";
+ const breath=.5+.5*Math.sin(t*1.9),flick=.5+.5*Math.sin(t*7.3+Math.sin(t*2.1)*2);
+ const flash=updateStrikes(t);
+ const I=.62+.18*breath+.10*flick+.55*flash;
+ // 1) luz pulsando no chão ao redor das crateras
+ for(const c of EN.craters){
+  const R=c.rx*1.3;
+  L.save();L.translate(c.x,c.y);L.scale(1,.55);
+  const g=L.createRadialGradient(0,0,2,0,0,R);
+  g.addColorStop(0,`rgba(175,75,255,${.09*I})`);g.addColorStop(.5,`rgba(130,45,215,${.19*I})`);g.addColorStop(1,"rgba(90,30,170,0)");
+  L.fillStyle=g;L.fillRect(-R,-R,R*2,R*2);L.restore();
+ }
+ // 2) halos das descargas da arte
+ L.globalAlpha=Math.min(1,.55*I);L.drawImage(EN.glowWide,0,0);
+ L.globalAlpha=Math.min(1,.65*I);L.drawImage(EN.glowTight,0,0);
+ // 3) rachaduras elétricas da arte, respirando
+ L.globalAlpha=Math.min(1,.5+.35*Math.min(1,I));L.drawImage(EN.bolt,0,0);
+ // 4) pulsos de corrente: anéis que se expandem pelas rachaduras
+ EN.craters.forEach((c,ci)=>{
+  for(let k=0;k<2;k++){
+   const u=(t*.42+ci*.37+k*.5)%1,f=.12+u*1.55,f0=Math.max(0,f-.3);
+   L.save();L.beginPath();
+   L.ellipse(c.x,c.y,c.rx*f,c.rx*f*.9,0,0,Math.PI*2);
+   L.moveTo(c.x+c.rx*f0,c.y);L.ellipse(c.x,c.y,c.rx*f0,c.rx*f0*.9,0,0,Math.PI*2);
+   L.clip("evenodd");
+   L.globalAlpha=Math.sin(Math.PI*u)*.9;L.drawImage(EN.core,0,0);
+   L.globalAlpha=Math.sin(Math.PI*u)*.55;L.drawImage(EN.bolt,0,0);
+   L.restore();
+  }
+ });
+ // 5) núcleo branco-rosado cintilando
+ L.globalAlpha=Math.min(1,.25+.45*flick*Math.min(1,I)+.3*flash);L.drawImage(EN.core,0,0);
+ // 6) descargas procedurais + microfaíscas
+ drawStrikes(L,t);drawMicroArcs(L,t,I);
+ // 7) fagulhas e fumaça subindo das crateras
+ updateParticles(dt,I);drawParticles(L);
+ // 8) recorta pela zona vermelha e aplica no mapa
+ L.setTransform(1,0,0,1,0,0);L.globalAlpha=1;L.globalCompositeOperation="destination-in";L.drawImage(EN.zoneMask,0,0);
+ ctx.save();ctx.globalCompositeOperation="screen";ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";
+ ctx.drawImage(EN.layer,EN.x0*EN.sx,EN.y0*EN.sy,EN.w*EN.sx,EN.h*EN.sy);
+ ctx.restore();
+}
+
+/* Depuração visual das zonas: azul = colisão, amarelo = névoa, vermelho = energia (tecla G). */
+function drawDebug(){
+ ctx.save();ctx.lineWidth=3;ctx.lineJoin="round";
+ ctx.strokeStyle="#2f7bff";ctx.fillStyle="rgba(47,123,255,.25)";
+ for(const c of currentColliders()){worldPoly(c.p);ctx.fill();ctx.stroke();}
+ ctx.strokeStyle="rgba(47,160,255,.45)";ctx.lineWidth=(WALL_THICKNESS+player.radius)*2;ctx.lineCap="round";
+ for(const w of collisionWalls){ctx.beginPath();w.points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.stroke();}
+ ctx.lineWidth=3;ctx.strokeStyle="#4db3ff";
+ for(const w of collisionWalls){ctx.beginPath();w.points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.stroke();}
+ ctx.strokeStyle="#ffd400";ctx.fillStyle="rgba(255,212,0,.16)";
+ for(const z of FOG_ZONES){worldPoly(z.poly);ctx.fill();ctx.stroke();}
+ ctx.strokeStyle="#ff2d2d";ctx.fillStyle="rgba(255,45,45,.14)";worldPoly(ENERGY_ZONE);ctx.fill();ctx.stroke();
+ ctx.strokeStyle="#fbbf24";ctx.lineWidth=3;
+ ctx.strokeRect(PLAYER_BOUNDS.minX,PLAYER_BOUNDS.minY,PLAYER_BOUNDS.maxX-PLAYER_BOUNDS.minX,PLAYER_BOUNDS.maxY-PLAYER_BOUNDS.minY);
+ ctx.strokeStyle="#22d3ee";ctx.setLineDash([9,7]);
+ const spawn=mapConfig.spawn_bounds;
+ ctx.strokeRect(spawn.min_x,spawn.min_y,spawn.max_x-spawn.min_x,spawn.max_y-spawn.min_y);
+ ctx.setLineDash([]);
+ ctx.strokeStyle="#fff";ctx.beginPath();ctx.arc(player.x,player.y,player.radius,0,Math.PI*2);ctx.stroke();
+ ctx.restore();
+}
+function setDebug(v){debug=!!v;const b=document.getElementById("debugBtn");if(b){b.textContent=`Zonas (G): ${debug?"ligado":"desligado"}`;b.classList.toggle("active",debug);}}
+
+function drawRain(t){
+ // Chuva fina em perspectiva: mais discreta no fundo e um pouco mais nítida em primeiro plano.
+ ctx.save();ctx.globalCompositeOperation="screen";ctx.lineCap="round";
+ const count=190;
+ for(let i=0;i<count;i++){
+  const depth=(i%7)/6, speed=520+depth*420;
+  const x=(i*173.7+t*(95+depth*42))%(WORLD.width+180)-90;
+  const y=(i*97.3+t*speed)%(WORLD.height+120)-60;
+  const alpha=.10+depth*.14;
+  ctx.strokeStyle=`rgba(205,218,255,${alpha})`;ctx.lineWidth=.75+depth*.45;
+  ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-8-depth*5,y+22+depth*12);ctx.stroke();
+ }
+ ctx.restore();
+}
+function drawLights(t){
+ ctx.save();ctx.globalCompositeOperation="screen";
+ lamps.forEach((l,i)=>{
+  const flicker=.78+.16*Math.sin(t*3.4+i*2)+.06*Math.sin(t*11+i);
+  const radius=230*flicker;
+  const g=ctx.createRadialGradient(l.x,l.y,4,l.x,l.y,radius);
+  g.addColorStop(0,`rgba(255,220,145,${.23*flicker})`);g.addColorStop(.35,`rgba(255,190,100,${.09*flicker})`);g.addColorStop(1,"rgba(255,190,100,0)");
+  ctx.fillStyle=g;ctx.beginPath();ctx.ellipse(l.x,l.y,radius,radius*.72,0,0,Math.PI*2);ctx.fill();
+ });
+ const neon=ctx.createRadialGradient(1200,470,20,1200,470,650);
+ neon.addColorStop(0,"rgba(204,70,255,.13)");neon.addColorStop(1,"rgba(204,70,255,0)");
+ ctx.fillStyle=neon;ctx.fillRect(450,250,1500,900);
+ ctx.restore();
+}
+function drawPlayer(){
+ const p=player;
+ ctx.save();ctx.translate(p.x,p.y);
+ ctx.fillStyle="rgba(0,0,0,.48)";ctx.beginPath();ctx.ellipse(5,12,24,12,0,0,Math.PI*2);ctx.fill();
+ ctx.shadowColor="#c084fc";ctx.shadowBlur=22;
+ ctx.fillStyle="#191323";ctx.strokeStyle="#e9c5ff";ctx.lineWidth=3;
+ ctx.beginPath();ctx.ellipse(0,0,15,21,0,0,Math.PI*2);ctx.fill();ctx.stroke();
+ ctx.shadowBlur=8;ctx.fillStyle="#d8b4fe";ctx.beginPath();ctx.arc(0,-13,8,0,Math.PI*2);ctx.fill();
+ ctx.fillStyle="#f5d0fe";ctx.fillRect(-8,1,16,4);
+ ctx.restore();
+}
+function drawOcclusion(){
+ // Reaproveita os pixels da própria arte recortados por máscara: sem sprites falsos.
+ // Quando o personagem está atrás, a estrutura fica translúcida e revela sua silhueta.
+ for(const o of foreground){
+  if(player.y < o.foot && player.y > o.foot-420){
+   ctx.save();worldPoly(o.poly);ctx.clip();
+   ctx.globalAlpha=.43;
+   ctx.drawImage(mapImage,0,0,WORLD.width,WORLD.height);
+   ctx.restore();
+   // Máscara de oclusão sem contorno visível.
+   // Mantém a transparência da estrutura sem desenhar retângulos ou linhas de marcação.
+  }
+ }
+}
+function render(t){
+ if(!imageReady){ctx.fillStyle="#100d18";ctx.fillRect(0,0,2400,1800);ctx.fillStyle="#eee";ctx.font="32px system-ui,sans-serif";ctx.fillText("Carregando mapa…",40,60);return;}
+ ctx.clearRect(0,0,WORLD.width,WORLD.height);
+ ctx.drawImage(mapImage,0,0,WORLD.width,WORLD.height);
+ if(effects){drawWater(t);drawEnergy(t);drawLights(t);}
+ drawPlayer();
+ if(effects)drawFog(t); // névoa passa por cima do jogador para dar profundidade
+ drawOcclusion();
+ if(effects)drawRain(t);
+ if(debug)drawDebug();
+ const drawSelectionOverlay=window.terminalVilarMapEditorBridge?.drawSelectionOverlay;
+ if(typeof drawSelectionOverlay==="function")drawSelectionOverlay(ctx);
+}
+function frame(now){
+ const dt=Math.min(.04,(now-lastTime)/1000||0);lastTime=now;elapsed+=dt;
+ let ax=0,ay=0;
+ if(keys.has("ArrowLeft")||keys.has("a"))ax--;
+ if(keys.has("ArrowRight")||keys.has("d"))ax++;
+ if(keys.has("ArrowUp")||keys.has("w"))ay--;
+ if(keys.has("ArrowDown")||keys.has("s"))ay++;
+ if(!editorActive&&(ax||ay)){const len=Math.hypot(ax,ay);const speed=player.speed*(keys.has("Shift")?1.65:1);moveEntity(player,ax/len*speed*dt,ay/len*speed*dt);}
+ render(elapsed);requestAnimationFrame(frame);
+}
+window.addEventListener("keydown",e=>{if(editorActive||e.target.closest?.("#map-editor"))return;const k=e.key.length===1?e.key.toLowerCase():e.key;if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key))e.preventDefault();if(k==="g"&&!e.repeat)setDebug(!debug);keys.add(k);});
+window.addEventListener("keyup",e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;keys.delete(k);});
+document.getElementById("effectsBtn").onclick=()=>{effects=!effects;const b=document.getElementById("effectsBtn");b.textContent=`Ambiente: ${effects?"ligado":"desligado"}`;b.classList.toggle("active",effects);};
+document.getElementById("resetBtn").onclick=()=>{player.x=SPAWN.x;player.y=SPAWN.y;};
+document.getElementById("debugBtn").onclick=()=>setDebug(!debug);
+const previewGeometry={
+ playerBounds:{minX:PLAYER_BOUNDS.minX,maxX:PLAYER_BOUNDS.maxX,minY:PLAYER_BOUNDS.minY,maxY:PLAYER_BOUNDS.maxY},
+ spawnCandidateBounds:{minX:mapConfig.spawn_bounds.min_x,maxX:mapConfig.spawn_bounds.max_x,minY:mapConfig.spawn_bounds.min_y,maxY:mapConfig.spawn_bounds.max_y}
+};
+function setEditorMode(enabled){
+ editorActive=enabled;
+ if(enabled){previousEditorDebug=debug;setDebug(true);}
+ else setDebug(previousEditorDebug);
+}
+window.terminalVilarMapEditorBridge={
+ mapConfig,
+ previewConfig:{geometry:previewGeometry},
+ colliders:mapConfig.colliders,
+ render:()=>render(elapsed),
+ setEditorMode,
+ drawSelectionOverlay:null
+};
+window.TerminalVilar={
+ world:WORLD,player,get colliders(){return currentColliders();},collisionWalls,playerBounds:PLAYER_BOUNDS,
+ zones:{energy:ENERGY_ZONE,fog:FOG_ZONES},
+ isPositionBlocked:(x,y,r=player.radius)=>isBlocked(x,y,r),
+ moveEntity:(entity,dx,dy,r=entity.radius||player.radius)=>moveEntity(entity,dx,dy,r),
+ setPlayerState:(state)=>{if(Number.isFinite(state.x))player.x=Math.max(0,Math.min(WORLD.width,state.x));if(Number.isFinite(state.y))player.y=Math.max(0,Math.min(WORLD.height,state.y));if(Number.isFinite(state.radius))player.radius=state.radius;},
+ setPlayerRenderer:(fn)=>{if(typeof fn==="function")window.TerminalVilar.customPlayerRenderer=fn;},
+ setEffectsEnabled:(value)=>{effects=!!value;},
+ setDebug:(value)=>setDebug(value),
+ rebuildColliders:()=>currentColliders(),
+ getCollisionSource:()=>LEGACY_COLLIDERS ? "marcacoes-azuis+backend" : "marcacoes-azuis"
+};
+requestAnimationFrame(frame);
+})();
+</script>
+{% if map_editor_enabled %}
+<script src="{{ url_for('static', filename='js/terminal-vilar-map-editor.js', v='0.139') }}"></script>
+{% endif %}
+</body></html>

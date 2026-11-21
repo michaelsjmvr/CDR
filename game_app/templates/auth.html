@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080b12" />
+    <title>{% if mode == 'register' %}Criar conta{% else %}Entrar{% endif %} — Crônicas do Recomeço</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+  </head>
+  <body class="auth-page">
+    <main class="auth-layout">
+      <section class="auth-art" aria-label="Crônicas do Recomeço">
+        <div class="auth-brand"><div class="brand-mark" aria-hidden="true">✦</div><span>CRÔNICAS DO<br /><strong>RECOMEÇO</strong></span></div>
+        <div class="auth-story"><span class="scene-kicker">TODA JORNADA COMEÇA DE NOVO</span><h1>O mundo<br />ainda espera.</h1><p>Entre nas ruínas. Descubra o que resta depois do fim.</p></div>
+        <div class="auth-art-footer">FANTASIA SOMBRIA · UMA NOVA JORNADA</div>
+      </section>
+
+      <section class="auth-panel">
+        <div class="auth-card">
+          <div class="auth-mobile-brand"><div class="brand-mark" aria-hidden="true">✦</div><span>CRÔNICAS DO <strong>RECOMEÇO</strong></span></div>
+          <span class="scene-kicker">SALA DE ACESSO</span>
+          <h2>{% if mode == 'register' %}Crie sua conta{% else %}Boas-vindas{% endif %}</h2>
+          <p class="auth-intro">{% if mode == 'register' %}Prepare seu lugar neste mundo.{% else %}Entre para continuar sua jornada.{% endif %}</p>
+
+          {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}<div class="notice {{ category }}">{{ message }}</div>{% endfor %}
+          {% endwith %}
+          {% if error %}<div class="notice error" role="alert">{{ error }}</div>{% endif %}
+
+          {% if mode == 'register' %}
+          <form method="post" action="{{ url_for('auth.register') }}" class="auth-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <label for="username">Nome de usuário</label>
+            <input id="username" name="username" type="text" minlength="3" maxlength="24" pattern="[A-Za-z0-9_]{3,24}" autocomplete="username" value="{{ username }}" placeholder="Seu nome de aventureiro" required autofocus />
+            <small>3 a 24 caracteres: letras, números ou _</small>
+            <label for="password">Senha</label>
+            <input id="password" name="password" type="password" minlength="10" maxlength="128" autocomplete="new-password" placeholder="No mínimo 10 caracteres" required />
+            <label for="password_confirmation">Confirme a senha</label>
+            <input id="password_confirmation" name="password_confirmation" type="password" minlength="10" maxlength="128" autocomplete="new-password" placeholder="Digite a senha novamente" required />
+            <button class="primary-button" type="submit">Criar conta <span aria-hidden="true">→</span></button>
+          </form>
+          <p class="auth-switch">Já tem uma conta? <a href="{{ url_for('auth.home') }}">Entrar</a></p>
+          {% else %}
+          <form method="post" action="{{ url_for('auth.login') }}" class="auth-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <label for="username">Nome de usuário</label>
+            <input id="username" name="username" type="text" maxlength="24" autocomplete="username" value="{{ username }}" placeholder="Seu nome de aventureiro" required autofocus />
+            <label for="password">Senha</label>
+            <input id="password" name="password" type="password" maxlength="128" autocomplete="current-password" placeholder="Sua senha" required />
+            <button class="primary-button" type="submit">Entrar na conta <span aria-hidden="true">→</span></button>
+          </form>
+          <p class="auth-switch">Primeira vez aqui? <a href="{{ url_for('auth.register') }}">Criar conta</a></p>
+          {% endif %}
+          <div class="auth-footnote"><span class="note-mark">i</span> Protótipo em desenvolvimento</div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

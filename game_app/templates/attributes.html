@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="pt-BR" class="character-document">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080b12" />
+    <title>Atributos — Crônicas do Recomeço</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css', v='0.120') }}" />
+    <script src="{{ url_for('static', filename='js/vendor/socket.io.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/attributes.js', v='0.103') }}" defer></script>
+  </head>
+  <body class="talent-page">
+    <main class="talent-layout attribute-layout" data-csrf-token="{{ csrf_token() }}">
+      <header class="talent-topbar">
+        <a class="brand character-brand" href="{{ url_for('game.lobby') }}"><span class="brand-mark" aria-hidden="true">✦</span><span><span class="eyebrow">CRÔNICAS DO</span><strong>Recomeço</strong></span></a>
+        <div class="talent-character-summary"><span>{{ character['name'] }}</span><i>·</i><span>{{ class_info['name'] }}</span><i>·</i><span>Nível {{ character['level'] }}</span></div>
+        <a class="switch-character-button" href="{{ url_for('game.lobby') }}">Voltar à Sala de Espera</a>
+      </header>
+      <div class="attribute-notice-slot" aria-live="polite" aria-atomic="true">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% for category, message in messages %}<div class="notice {{ category }} talent-notice">{{ message }}</div>{% endfor %}
+        {% endwith %}
+      </div>
+      <section class="talent-heading">
+        <div><span class="scene-kicker">PROGRESSÃO DO PERSONAGEM</span><h1>Distribuir atributos</h1><p>Escolha onde investir os pontos conquistados ao subir de nível.</p></div>
+      </section>
+      <section class="attribute-columns">
+        <div class="attribute-distribution-column">
+      <div class="legacy-point-card attribute-points-card"><span>PONTOS LIVRES</span><strong id="attribute-points">{{ character['attribute_points'] }}</strong><small id="attribute-points-copy">{% if xp_to_next_level is not none %}Próximo nível em {{ xp_to_next_level }} de experiência · +5 pontos ao subir{% else %}Nível máximo · não há novos pontos por nível{% endif %}</small></div>
+      {% if is_premium %}
+      <form method="post" class="attribute-auto-setting" data-auto-enabled="{{ 1 if character['auto_allocate_attributes'] else 0 }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <input type="hidden" name="action" value="toggle_auto" />
+        <input type="hidden" name="enabled" value="{{ 0 if character['auto_allocate_attributes'] else 1 }}" />
+        <span><strong>Distribuição automática especial</strong><small>Ao ativar, distribui os pontos livres e os novos ganhos conforme a prioridade da sua classe. A distribuição manual continua disponível.</small></span>
+        <button type="submit">{{ 'Desativar' if character['auto_allocate_attributes'] else 'Ativar' }}</button>
+      </form>
+      {% else %}<p class="attribute-auto-locked">Distribuição automática disponível com o benefício especial.</p>{% endif %}
+      <section class="attribute-list" aria-label="Atributos do personagem">
+        {% for stat in stats %}
+        <article class="attribute-card">
+          <div class="attribute-main"><span class="attribute-symbol">{% if stat['key'] == 'strength' %}⚔{% elif stat['key'] == 'agility' %}➶{% elif stat['key'] == 'vitality' %}♡{% else %}✧{% endif %}</span><div><h2>{{ stat['label'] }}</h2><p>{% if stat['key'] == 'strength' %}Escala o dano básico conforme a classe.{% elif stat['key'] == 'agility' %}A cada ponto: +0,01% de chance crítica e +0,01% de esquiva. Também reduz recargas, aumenta movimento e pode escalar seu dano.{% elif stat['key'] == 'vitality' %}+2 de Vida máxima por ponto.{% elif character['class_id'] in ['ash_weaver', 'rune_blade'] %}+1,5 de Mana máxima por ponto; também escala seu dano mágico.{% else %}+1,5 de Mana máxima por ponto.{% endif %}</p></div></div>
+          <div class="attribute-value"><strong data-attribute-value="{{ stat['key'] }}">{{ stat['value'] }}</strong><small>Base {{ stat['base'] }}</small></div>
+          <form method="post" class="attribute-allocation-form" data-attribute="{{ stat['key'] }}" data-current="{{ stat['value'] }}" data-cap="{{ max_attribute }}" data-available="{{ character['attribute_points'] }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" /><input type="hidden" name="attribute" value="{{ stat['key'] }}" />
+            <input type="number" name="amount" min="1" max="{{ character['attribute_points'] }}" value="1" aria-label="Quantidade para {{ stat['label'] }}" {% if not character['attribute_points'] or stat['value'] >= max_attribute %}disabled{% endif %} />
+            <small class="attribute-estimate" aria-live="polite">Após adicionar: <strong data-estimated-value>{{ stat['value'] + 1 }}</strong></small>
+            <small class="attribute-estimate-warning" data-estimate-warning hidden></small>
+            <button type="submit" {% if not character['attribute_points'] or stat['value'] >= max_attribute %}disabled{% endif %}>Adicionar</button>
+          </form>
+        </article>
+        {% endfor %}
+      </section>
+        </div>
+        <section class="attribute-combat-summary" aria-label="Efeitos atuais dos atributos no combate">
+          <div class="attribute-combat-heading"><div><span class="scene-kicker">SEU PERSONAGEM EM COMBATE</span><h2>Combate atual</h2></div><p>Veja como seus ataques, habilidades e cartas afetam as lutas.</p></div>
+          <div class="attribute-combat-grid">
+            <div><span>Dano básico estimado</span><strong data-combat-value="basic_damage_exact">{{ '%.1f'|format(combat_summary['basic_damage_exact'])|replace('.', ',') }}</strong></div>
+            <div><span>Dano da habilidade estimado</span><strong data-combat-value="skill_damage_exact">{{ '%.1f'|format(combat_summary['skill_damage_exact'])|replace('.', ',') }}</strong></div>
+            <div><span>Dano físico estimado</span><strong data-combat-value="physical_damage_exact">{{ '%.1f'|format(combat_summary['physical_damage_exact'])|replace('.', ',') }}</strong></div>
+            <div><span>Dano mágico estimado</span><strong data-combat-value="magical_damage_exact">{{ '%.1f'|format(combat_summary['magical_damage_exact'])|replace('.', ',') }}</strong></div>
+            <div><span>Dano da habilidade com projétil</span>{% if combat_summary['projectile_damage_exact'] %}<strong data-combat-value="projectile_damage_exact">{{ '%.1f'|format(combat_summary['projectile_damage_exact'])|replace('.', ',') }}</strong>{% else %}<strong>Não se aplica à habilidade atual</strong>{% endif %}</div>
+            <div><span>Dano elemental da habilidade</span>{% if combat_summary['elemental_damage_exact'] %}<strong data-combat-value="elemental_damage_exact" data-elemental-name="{{ combat_summary['elemental_name'] }}">{{ '%.1f'|format(combat_summary['elemental_damage_exact'])|replace('.', ',') }} · {{ combat_summary['elemental_name'] }}</strong>{% else %}<strong>Não se aplica à habilidade atual</strong>{% endif %}</div>
+            <div><span>Vida recuperada pelo dano causado</span><strong data-combat-value="life_steal">{{ '%.1f'|format(combat_summary['life_steal'] * 100)|replace('.', ',') }}%</strong></div>
+            <div><span>Dano devolvido ao atacante</span><strong data-combat-value="damage_reflection">{{ '%.1f'|format(combat_summary['damage_reflection'] * 100)|replace('.', ',') }}%</strong></div>
+            <div><span>Vida máxima</span><strong data-combat-value="max_health">{{ combat_summary['max_health'] }}</strong></div>
+            <div><span>Mana máxima</span><strong data-combat-value="max_mana">{{ combat_summary['max_mana'] }}</strong></div>
+            <div><span>Chance de acerto crítico</span><strong data-combat-value="critical_chance">{{ '%.1f'|format(combat_summary['critical_chance'] * 100)|replace('.', ',') }}%</strong></div>
+            <div><span>Dano crítico</span><strong>150% do dano normal</strong></div>
+            <div><span>Vida recuperada em acertos críticos</span><strong data-combat-value="critical_heal">{{ '%.1f'|format(combat_summary['critical_heal'] * 100)|replace('.', ',') }}%</strong></div>
+            <div><span>Chance de esquiva</span><strong data-combat-value="dodge_chance">{{ '%.1f'|format(combat_summary['dodge_chance'] * 100)|replace('.', ',') }}%</strong></div>
+            <div><span>Alcance do ataque básico</span><strong data-combat-value="attack_range">{{ '%.0f'|format(combat_summary['attack_range']) }} unidades</strong></div>
+            <div><span>Alcance da habilidade</span><strong data-combat-value="skill_range">{{ '%.0f'|format(combat_summary['skill_range']) }} unidades</strong></div>
+            <div><span>Redução de dano</span><strong data-combat-value="damage_reduction">{{ '%.1f'|format(combat_summary['damage_reduction'] * 100)|replace('.', ',') }}%</strong></div>
+            <div><span>Redução contra projéteis</span><strong data-combat-value="ranged_reduction">{{ '%.1f'|format(combat_summary['ranged_reduction'] * 100)|replace('.', ',') }}%</strong></div>
+            <div><span>Recarga do ataque básico</span><strong data-combat-value="basic_cooldown">{{ '%.3f'|format(combat_summary['basic_cooldown'])|replace('.', ',') }} s</strong></div>
+            <div><span>Recarga da habilidade</span><strong data-combat-value="skill_cooldown">{{ '%.3f'|format(combat_summary['skill_cooldown'])|replace('.', ',') }} s</strong></div>
+            <div><span>Recarga do avanço</span><strong data-combat-value="dash_cooldown">{{ '%.3f'|format(combat_summary['dash_cooldown'])|replace('.', ',') }} s</strong></div>
+            <div><span>Velocidade de movimento</span><strong data-combat-value="move_speed_bonus">+{{ '%.1f'|format(combat_summary['move_speed_bonus'])|replace('.', ',') }}%</strong></div>
+          </div>
+          <p class="attribute-combat-note">Os danos são estimativas antes das defesas do inimigo. Chefes reduzem em 30% o dano mágico do próprio elemento. Um acerto crítico causa 1,5× o dano normal. Agilidade, talentos, passivas e cartas podem aumentar as chances de crítico e esquiva, respeitando os limites de 50% e 35%.</p>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

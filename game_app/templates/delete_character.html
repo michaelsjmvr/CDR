@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="pt-BR" class="character-document">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080b12" />
+    <title>Confirmar exclusão — Crônicas do Recomeço</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}" />
+  </head>
+  <body class="character-page">
+    <main class="delete-layout">
+      <a class="brand character-brand" href="{{ url_for('characters.index') }}">
+        <span class="brand-mark" aria-hidden="true">✦</span>
+        <span><span class="eyebrow">CRÔNICAS DO</span><strong>Recomeço</strong></span>
+      </a>
+      <section class="delete-confirm-card">
+        <span class="scene-kicker">CONFIRMAÇÃO NECESSÁRIA</span>
+        <div class="delete-portrait portrait-{{ class_info['portrait_style'] }}" aria-hidden="true">{{ class_info['portrait_mark'] }}</div>
+        <h1>Deletar {{ character['name'] }}?</h1>
+        <p class="delete-class">{{ class_info['name'] }} · Nível {{ character['level'] }}</p>
+        {% if is_last_character %}
+        <div class="deletion-warning is-last">
+          <strong>Este é seu último personagem.</strong>
+          <p>Ao confirmar, você perderá permanentemente o personagem, seus equipamentos e todo o progresso vinculado. O Ouro ficará no saldo da conta. O Baú da Conta e tudo que estiver nele também serão deletados.</p>
+        </div>
+        {% else %}
+        <div class="deletion-warning">
+          <strong>Esta ação é permanente.</strong>
+          <p>Ao confirmar, você perderá permanentemente este personagem, seus equipamentos e todo o progresso vinculado. O Ouro e o Baú da Conta continuarão disponíveis para os outros personagens ativos.</p>
+        </div>
+        {% endif %}
+        <form method="post" action="{{ url_for('characters.delete', character_id=character['id']) }}" class="delete-actions">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <input type="hidden" name="is_last_character" value="{{ '1' if is_last_character else '0' }}" />
+          <a class="secondary-button cancel-delete" href="{{ url_for('characters.index') }}">Manter personagem</a>
+          <button class="danger-button" type="submit">Sim, deletar permanentemente</button>
+        </form>
+      </section>
+    </main>
+  </body>
+</html>

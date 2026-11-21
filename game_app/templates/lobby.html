@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pt-BR" class="lobby-document">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080b12" />
+    <title>Sala de Espera — Crônicas do Recomeço</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css', v='0.124') }}" />
+    <script src="{{ url_for('static', filename='js/portrait.js', v='0.123') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/lobby.js', v='0.123') }}" defer></script>
+  </head>
+  <body class="lobby-page">
+    <main class="lobby-shell">
+      <header class="lobby-header">
+        <a class="lobby-brand" href="{{ url_for('characters.index') }}">
+          <span class="lobby-brand-mark" aria-hidden="true">✦</span>
+          <span><strong>CRÔNICAS DO RECOMEÇO</strong><small>SALA DE ESPERA</small></span>
+        </a>
+        <label class="friend-search friend-search-header"><span aria-hidden="true">⌕</span><input type="search" placeholder="Buscar perfil de jogador" aria-label="Buscar perfil de jogador" disabled /><small>Em breve</small></label>
+        <a class="switch-character-button" href="{{ url_for('characters.index') }}">Trocar personagem</a>
+        <form class="lobby-logout-form" method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}" /><button class="switch-character-button lobby-logout-button" type="submit">Sair</button></form>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}{% for category, message in messages %}<p class="lobby-notice {{ category }}" role="status">{{ message }}</p>{% endfor %}{% endif %}
+      {% endwith %}
+      <section class="lobby-welcome">
+        <span class="scene-kicker">SUA PRÓXIMA JORNADA COMEÇA AQUI</span>
+        <h1>Prepare sua próxima jornada</h1>
+        <p>A campanha pode ser jogada solo. O modo cooperativo online para até três jogadores ainda está em desenvolvimento.</p>
+      </section>
+
+      <div class="lobby-grid">
+        <div class="lobby-left-column">
+          <section class="lobby-panel party-panel">
+            <div class="lobby-panel-heading">
+              <div><span class="scene-kicker">CAMPANHA · TEMPORADA 1</span><h2>Pronto para partir</h2><small class="party-progress">Escolha uma dificuldade e uma fase liberadas{% if campaign_map %} · {{ campaign_map['name'] }}{% endif %}</small></div>
+              <span class="party-capacity"><i></i> Solo</span>
+            </div>
+            <div class="party-slots">
+              <article class="party-member is-self">
+                <div class="party-portrait"><canvas class="lobby-avatar-canvas" data-class-id="{{ character['class_id'] }}" aria-label="Retrato de {{ class_info['name'] }}"></canvas><span class="party-level">Nv. {{ character['level'] }}</span></div>
+                <div class="party-member-info"><span class="party-role">✦ Você · Líder</span><strong>{{ character['name'] }}</strong><small>{{ class_info['name'] }}</small></div>
+              </article>
+              <button class="party-member is-empty invite-slot" type="button" disabled><span class="empty-slot-plus">+</span><strong>Cooperação em desenvolvimento</strong><small>O limite planejado é de três jogadores</small><span class="slot-number">02</span></button>
+              <button class="party-member is-empty invite-slot" type="button" disabled><span class="empty-slot-plus">+</span><strong>Cooperação em desenvolvimento</strong><small>Qualquer combinação de classes</small><span class="slot-number">03</span></button>
+            </div>
+            <div class="party-actions">
+              <div class="mission-selection" data-difficulty-states='{{ mission_difficulties|tojson }}'>
+                <label><span>Dificuldade</span><select name="difficulty" form="mission-start-form" id="mission-difficulty" required>{% for difficulty in mission_difficulties %}<option value="{{ difficulty['key'] }}"{% if difficulty['key'] == selected_difficulty %} selected{% endif %}{% if not difficulty['unlocked'] %} disabled{% endif %}>{{ difficulty['label'] }}{% if not difficulty['unlocked'] %} · bloqueado{% endif %}</option>{% endfor %}</select></label>
+                <label><span>Ato e fase</span><select name="phase" form="mission-start-form" id="mission-phase" required>{% for act in season_acts %}<optgroup label="Ato {{ act['number'] }} — Fases {{ act['first_phase'] }} a {{ act['last_phase'] }}">{% for phase in range(act['first_phase'], act['last_phase'] + 1) %}<option value="{{ phase }}"{% if phase == selected_phase %} selected{% endif %}{% if phase not in (mission_difficulties|selectattr('key', 'equalto', selected_difficulty)|first)['available_phases'] %} disabled{% endif %}>Fase {{ phase }}{% if phase in (mission_difficulties|selectattr('key', 'equalto', selected_difficulty)|first)['completed_phases'] %} · concluída{% endif %}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
+              </div>
+              <details class="difficulty-profiles">
+                <summary>Ver escalas e recompensas de cada risco</summary>
+                <p class="difficulty-profile-note">Valores atuais do protótipo; são candidatos de balanceamento, não regras finais.</p>
+                <div class="difficulty-profile-grid">
+                  {% for difficulty in mission_difficulties %}
+                    {% set profile = difficulty['profile'] %}
+                    <article class="difficulty-profile-card">
+                      <h3>{{ difficulty['label'] }}</h3>
+                      <p><strong>Vida inimiga:</strong> ×{{ '%.2f'|format(profile['enemy_health_multiplier'])|replace('.', ',') }} · <strong>Dano:</strong> ×{{ '%.2f'|format(profile['enemy_damage_multiplier'])|replace('.', ',') }}</p>
+                      <p><strong>Inimigos extras:</strong> +{{ profile['extra_enemies'] }} por onda comum.</p>
+                      <p><strong>Ouro:</strong> {{ profile['gold_base_per_monster'] }} base por abate, mais adicional por nível; +{{ profile['phase_bonus_gold'] }} por fase e +{{ profile['boss_bonus_gold'] }} extras em fase com chefe.</p>
+                      <p><strong>Baús:</strong> Raro em fase comum 15%, semichefe 30%; no chefe, {{ (profile['third_chest_chance'] * 100)|int }}% de chance de terceiro baú. Pesos C/R/E/L: {{ profile['boss_rarity_weights']|join('/') }}%.</p>
+                    </article>
+                  {% endfor %}
+                </div>
+              </details>
+              <p class="lobby-phase-note">A próxima dificuldade abre após concluir as 30 fases da anterior. Cada fase fica liberada ao concluir a anterior na mesma dificuldade.</p>
+              <form class="lobby-departure" id="mission-start-form" method="post" action="{{ url_for('game.lobby_start') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                <button class="primary-button lobby-start-button" type="submit">Começar missão <b>→</b></button>
+              </form>
+            </div>
+          </section>
+
+          <section class="lobby-panel room-chat" aria-labelledby="room-chat-title">
+            <div class="lobby-panel-heading"><div><span class="scene-kicker">COMUNICAÇÃO</span><h2 id="room-chat-title">Conversa da sala</h2></div><span class="chat-status"><i></i> Aguardando grupo</span></div>
+            <div class="chat-empty"><span class="chat-symbol" aria-hidden="true">✧</span><p>As mensagens do grupo aparecerão aqui quando os convites e as salas cooperativas estiverem disponíveis.</p></div>
+            <form class="chat-composer" aria-label="Conversa indisponível"><input type="text" placeholder="A conversa será habilitada quando o sistema de grupo estiver disponível" disabled /><button type="button" disabled aria-label="Enviar mensagem">➤</button></form>
+          </section>
+        </div>
+
+        <aside class="lobby-right-column">
+          <section class="lobby-panel lobby-services">
+            <div class="services-heading"><span class="scene-kicker">SERVIÇOS</span><h2>Organize seus recursos</h2></div>
+            <a class="service-card service-ready" href="{{ url_for('attributes.allocate') }}"><span class="service-icon">⚔{% if character['attribute_points'] > 0 %}<i class="service-notification-dot" title="Pontos de atributo disponíveis" aria-label="Pontos de atributo disponíveis"></i>{% endif %}</span><span><strong>Atributos</strong><small>Distribua seus pontos</small></span><b>›</b></a>
+            <a class="service-card service-ready" href="{{ url_for('talents.tree') }}"><span class="service-icon">✧{% if available_talent_points > 0 %}<i class="service-notification-dot" title="Pontos de Legado disponíveis" aria-label="Pontos de Legado disponíveis"></i>{% endif %}</span><span><strong>Árvore de Talentos</strong><small>Melhorias permanentes</small></span><b>›</b></a>
+            <a class="service-card service-ready" href="{{ url_for('game.inventory') }}"><span class="service-icon">▣</span><span><strong>Inventário</strong><small>Itens e saldo da conta</small></span><b>›</b></a>
+            <div class="service-card is-unavailable"><span class="service-icon">▤</span><span><strong>Baú</strong><small>Armazenamento compartilhado</small></span><b>·</b></div>
+            <div class="service-card is-unavailable"><span class="service-icon">◇</span><span><strong>Máquina do Caos</strong><small>Criação e fusão · planejado</small></span><b>·</b></div>
+            <div class="service-card is-unavailable"><span class="service-icon">⇄</span><span><strong>Troca</strong><small>Comércio entre amigos · planejado</small></span><b>·</b></div>
+          </section>
+          <section class="lobby-panel friends-panel">
+            <div class="lobby-panel-heading"><div><span class="scene-kicker">SOCIAL</span><h2>Lista de amigos</h2></div><span class="friends-count">{{ friends|length }} amigos</span></div>
+            {% if friends %}
+              <div class="friends-list">
+                {% for friend in friends %}<div class="friend-row"><span class="friend-avatar">{{ friend['username'][0]|upper }}</span><span class="friend-name"><strong>{{ friend['username'] }}</strong><small>Desconectado</small></span><button type="button" class="friend-invite-button" disabled>Convidar</button></div>{% endfor %}
+              </div>
+            {% else %}
+              <div class="friends-empty"><span>♙</span><p>Você ainda não tem amigos adicionados.</p></div>
+            {% endif %}
+            <small class="friends-note">A lista e os convites serão habilitados com o sistema social.</small>
+          </section>
+        </aside>
+      </div>
+      <dialog class="friends-dialog" id="friends-dialog" aria-labelledby="friends-dialog-title">
+        <div class="friends-dialog-heading"><div><span class="scene-kicker">CONVITE PARA O GRUPO</span><h2 id="friends-dialog-title">Escolha um amigo</h2></div><button type="button" class="friends-dialog-close" data-close-friends aria-label="Fechar">×</button></div>
+        {% if friends %}<div class="friends-list friends-dialog-list">{% for friend in friends %}<div class="friend-row"><span class="friend-avatar">{{ friend['username'][0]|upper }}</span><span class="friend-name"><strong>{{ friend['username'] }}</strong><small>Desconectado</small></span><button type="button" class="friend-invite-button" disabled>Convidar</button></div>{% endfor %}</div>{% else %}<div class="friends-empty"><span>♙</span><p>Adicione amigos para poder convidá-los para a sala.</p></div>{% endif %}
+        <small class="friends-note">Convites para a sala serão habilitados junto com o sistema de grupo.</small>
+      </dialog>
+      <footer class="lobby-footer">CRÔNICAS DO RECOMEÇO <span>·</span> O destino ainda está sendo escrito</footer>
+    </main>
+    <script src="{{ url_for('static', filename='js/lobby-missions.js', v='1') }}" defer></script>
+  </body>
+</html>

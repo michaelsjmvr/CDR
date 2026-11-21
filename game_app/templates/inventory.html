@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR" class="lobby-document">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Inventário — Crônicas do Recomeço</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css', v='0.124') }}" />
+  </head>
+  <body class="lobby-page">
+    <main class="lobby-shell post-mission-shell">
+      <header class="lobby-header">
+        <a class="lobby-brand" href="{{ url_for('game.lobby') }}">
+          <span class="lobby-brand-mark" aria-hidden="true">✦</span>
+          <span><strong>CRÔNICAS DO RECOMEÇO</strong><small>INVENTÁRIO</small></span>
+        </a>
+        <a class="switch-character-button" href="{{ url_for('game.lobby') }}">Sala de Espera</a>
+      </header>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}{% for category, message in messages %}<p class="lobby-notice {{ category }}" role="status">{{ message }}</p>{% endfor %}{% endif %}
+      {% endwith %}
+      <section class="lobby-welcome post-mission-welcome">
+        <span class="scene-kicker">RECURSOS DA CONTA</span>
+        <h1>Inventário</h1>
+        <p class="inventory-account-summary">Ouro da conta: <strong>{{ gold_display }} Ouro</strong> · Inventário: {{ inventory_count }} / {{ inventory_capacity }}</p>
+        <p class="virtual-currency-note">Ouro é moeda virtual do jogo, sem valor real ou saque.</p>
+      </section>
+      <section class="lobby-panel inventory-page-panel">
+        {% if items %}
+          <div class="resolution-item-list">
+            {% for item in items %}
+            <article class="resolution-item rarity-{{ item['rarity'] }}">
+              <span class="rarity-mark" aria-hidden="true"></span>
+              <span class="resolution-item-copy"><strong>{{ item['item_name'] }}</strong><small>{{ rarity_labels[item['rarity']] }} · venda {{ format_gold(item['salvage_value_gold']) }} Ouro</small></span>
+              <div class="resolution-item-actions">
+                <form method="post" action="{{ url_for('game.inventory_item_action') }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                  <input type="hidden" name="item_id" value="{{ item['id'] }}" />
+                  <button type="submit" name="action" value="sell">Vender</button>
+                </form>
+                <form method="post" action="{{ url_for('game.inventory_item_action') }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                  <input type="hidden" name="item_id" value="{{ item['id'] }}" />
+                  <button type="submit" name="action" value="discard">Descartar</button>
+                </form>
+              </div>
+            </article>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="inventory-empty-copy">Sua mochila está vazia. Baús conquistados aparecerão após a conclusão de uma missão.</p>
+        {% endif %}
+      </section>
+    </main>
+  </body>
+</html>

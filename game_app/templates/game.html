@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080b12" />
+    <meta name="description" content="Protótipo inicial de Crônicas do Recomeço." />
+    <title>Crônicas do Recomeço — Protótipo</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css', v='0.124') }}" />
+  </head>
+  <body>
+    <main class="game-shell" aria-label="Protótipo de Crônicas do Recomeço">
+      <canvas id="game" aria-label="Mapa e combate da missão atual. Use WASD ou as setas para mover e Espaço para avançar."></canvas>
+      {% if premium_test_toggle_enabled %}
+      <button type="button" class="premium-test-toggle" id="premium-test-toggle" title="Controle temporário dos benefícios especiais desta conta de teste">
+        <small>MODO DE TESTE</small>
+        <span>{{ 'Desativar benefício especial' if is_premium else 'Ativar benefício especial' }}</span>
+      </button>
+      {% endif %}
+
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">✦</div>
+          <div>
+            <p class="eyebrow">CRÔNICAS DO</p>
+            <h1>Recomeço</h1>
+          </div>
+        </div>
+        <div class="room-tag" id="phase-wave" aria-label="Fase, onda e monstros restantes"><span class="status-dot is-connecting" id="socket-status" title="Conectando ao servidor" aria-label="Conectando ao servidor"></span><span>FASE <b id="phase-number">{{ character['current_phase'] }}</b></span><span class="divider">/</span><span>ONDA <b id="wave-number">{{ character['current_wave'] }}</b></span><span class="topbar-monster-count">MONSTROS <strong id="monster-count">{{ enemies|selectattr('alive')|list|length }}</strong></span></div>
+        <div class="player-menu"><span>{{ character['name'] }} · {{ class_info['name'] }} · Nv. {{ character['level'] }}</span><a class="switch-character-button" href="{{ url_for('game.lobby') }}">Sala de Espera</a><form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}" /><button class="logout-button" type="submit">Sair</button></form><button class="icon-button" id="open-game-options" type="button" aria-label="Opções de controle" title="Opções de controle">⚙</button><button class="icon-button" id="fullscreen" type="button" aria-label="Alternar tela cheia" title="Tela cheia">⛶</button></div>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}<div class="game-notices">{% for category, message in messages %}<div class="notice {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+      {% endwith %}
+
+      <section class="target-monster-panel" id="target-monster-panel" aria-live="polite" aria-label="Informações do monstro mirado" hidden>
+        <canvas id="target-monster-portrait" width="96" height="96" aria-hidden="true"></canvas>
+        <div class="target-monster-details">
+          <div class="target-monster-heading">
+            <div><span id="target-monster-kind">ALVO</span><h2 id="target-monster-name">Monstro</h2></div>
+            <b id="target-monster-level">Nv. 1</b>
+          </div>
+          <div class="target-monster-health-copy"><span>VIDA</span><strong id="target-monster-health">0 / 0</strong></div>
+          <div class="target-monster-health-track" role="progressbar" aria-label="Vida do monstro" aria-valuemin="0" aria-valuemax="100"><i id="target-monster-health-fill"></i></div>
+          <div class="target-monster-facts">
+            <div><small>ELEMENTO</small><strong id="target-monster-element">Neutro</strong></div>
+            <div><small>RESISTÊNCIA</small><strong id="target-monster-resistance">Sem resistência especial conhecida</strong></div>
+            <div><small>PONTO FRACO</small><strong id="target-monster-weakness">Ainda não identificado</strong></div>
+          </div>
+        </div>
+      </section>
+
+      <dialog class="game-options-dialog" id="game-options-dialog" aria-labelledby="game-options-title">
+        <div class="game-options-heading"><div><span class="scene-kicker">CONTROLES E CÂMERA</span><h2 id="game-options-title">Opções</h2></div><button class="friends-dialog-close" id="close-game-options" type="button" aria-label="Fechar opções">×</button></div>
+        <p class="game-options-intro">As opções são salvas na sua conta e aplicadas sem reiniciar a partida.</p>
+        <p class="game-options-feedback" id="game-options-feedback" role="status" hidden></p>
+        <label class="game-option-field"><span>Esquema de controle</span><select id="control-scheme-setting"><option value="mouse_keyboard"{% if control_options['scheme'] == 'mouse_keyboard' %} selected{% endif %}>Teclado + Mouse</option><option value="keyboard_only"{% if control_options['scheme'] == 'keyboard_only' %} selected{% endif %}>Apenas Teclado</option></select></label>
+        <div class="game-options-slots"><strong>Atalhos de combate</strong><p>A tecla 1 usa o Ataque básico. Equipe até três habilidades disponíveis; no máximo uma delas pode ser suprema.</p>
+          {% for slot_number in range(1, 5) %}
+          {% set equipped_skill = control_options['skill_slots'][slot_number - 1] %}
+          {% if slot_number == 1 %}
+          <label class="game-option-field"><span>Tecla 1</span><select data-skill-slot-setting="1" disabled><option value="basic" selected>Ataque básico</option></select></label>
+          {% else %}
+          <label class="game-option-field"><span>Magia {{ slot_number - 1 }} · tecla {{ slot_number }}</span><select data-skill-slot-setting="{{ slot_number }}"><option value=""{% if not equipped_skill %} selected{% endif %}>Vazio</option>{% for skill in skill_options %}<option value="{{ skill['id'] }}"{% if equipped_skill == skill['id'] %} selected{% endif %}>{{ skill['name'] }}{% if skill.get('ultimate') %} · Suprema{% endif %}</option>{% endfor %}</select></label>
+          {% endif %}
+          {% endfor %}
+        </div>
+        <div class="game-options-mouse"><strong>Ações dos botões do mouse</strong>
+          <label class="game-option-field"><span>Botão esquerdo</span><select data-mouse-slot-setting="left">{% for slot_number in range(2, 5) %}<option value="{{ slot_number }}"{% if control_options['mouse_left_slot'] == slot_number %} selected{% endif %}>Magia {{ slot_number - 1 }} · tecla {{ slot_number }}</option>{% endfor %}</select></label>
+          <label class="game-option-field"><span>Botão direito</span><select data-mouse-slot-setting="right">{% for slot_number in range(2, 5) %}<option value="{{ slot_number }}"{% if control_options['mouse_right_slot'] == slot_number %} selected{% endif %}>Magia {{ slot_number - 1 }} · tecla {{ slot_number }}</option>{% endfor %}</select></label>
+        </div>
+        <div class="game-options-camera"><strong>Câmera</strong><span>Use a rodinha do mouse para aproximar ou afastar. O zoom respeita os limites do mapa.</span><span>WASD/setas movem · 1–4 usam os espaços · Espaço avança.</span></div>
+        <button class="primary-button game-options-save" id="save-game-options" type="button">Salvar opções <span>→</span></button>
+      </dialog>
+
+      <section class="phase-preparation" id="phase-preparation" aria-live="polite" hidden>
+        <span>INÍCIO DA MISSÃO · {{ mission_difficulty_label|upper }}</span><strong>PREPARE-SE</strong>
+        <p>A horda começa em <b id="phase-preparation-seconds">{{ mission_countdown_seconds }}</b>s</p>
+        <p>Movimento, ataques e monstros ficam congelados durante a contagem.</p>
+      </section>
+
+      <button class="card-draft-toggle{{ ' has-new-card' if pending_card_choices else '' }}" id="card-draft-toggle" type="button"
+        aria-controls="card-draft-backdrop"
+        aria-label="{{ 'Nova carta disponível. Pressione Tab para abrir a seleção.' if pending_card_choices else 'Nenhuma escolha de carta pendente.' }}"
+        aria-expanded="false"
+        data-pending-choices="{{ pending_card_choices }}"
+        {% if not pending_card_choices %}hidden{% endif %}>
+        <span data-card-toggle-label>Ver cartas</span>
+        <span class="card-draft-new-indicator" data-card-new-indicator {% if not pending_card_choices %}hidden{% endif %}>Nova carta</span>
+        <span class="card-draft-choice-count" data-card-choice-count>{{ pending_card_choices }} escolha(s)</span>
+        <kbd>Tab</kbd>
+      </button>
+
+      <section class="decision-overlay" id="phase-choice-overlay" {% if not character['phase_intermission'] %}hidden{% endif %}>
+        <div class="decision-card">
+          <span class="scene-kicker">FASE {{ character['current_phase'] }} CONCLUÍDA</span>
+          <h2>Como deseja continuar?</h2>
+          <p>A partida está pausada entre fases. Escolha preparar a próxima fase ou voltar à Sala de Espera.</p>
+          <form method="post" action="{{ url_for('game.continue_phase') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}" /><button class="primary-button" type="submit">Preparar próxima fase</button></form>
+          <a class="secondary-button" href="{{ url_for('game.lobby') }}">Ir para a Sala de Espera</a>
+        </div>
+      </section>
+
+      <section class="decision-overlay" id="death-overlay" {% if not character['death_intermission'] %}hidden{% endif %}>
+        <div class="decision-card death-card">
+          <span class="scene-kicker">FIM DE COMBATE</span>
+          <h2>Você morreu</h2>
+          <p>Você voltou à onda 1 da fase atual. Vida e Mana foram restauradas; as cartas e os orbes temporários foram perdidos. Escolha quando deseja retomar.</p>
+          <form method="post" action="{{ url_for('game.restart_phase') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}" /><button class="primary-button" type="submit">Reiniciar fase</button></form>
+          <a class="secondary-button" href="{{ url_for('game.lobby') }}">Ir para a Sala de Espera</a>
+        </div>
+      </section>
+
+      <section class="decision-overlay" id="campaign-complete-overlay" aria-live="polite" {% if not character['campaign_complete'] %}hidden{% endif %}>
+        <div class="decision-card">
+          <span class="scene-kicker">TEMPORADA 1 · CONCLUÍDA</span>
+          <h2>O capítulo jogável chegou ao fim</h2>
+          <p>Você concluiu as 30 fases. O nível e os Pontos de Legado continuam no personagem; novas temporadas ainda serão planejadas.</p>
+          <a class="primary-button" href="{{ url_for('game.lobby') }}">Voltar à Sala de Espera</a>
+        </div>
+      </section>
+
+      <section class="scene-label" aria-live="polite"
+        data-character-id="{{ character['id'] }}"
+        data-phase="{{ character['current_phase'] }}"
+        data-difficulty="{{ mission_difficulty }}"
+        data-act="{{ season_act or 0 }}"
+        data-map-index="{{ campaign_map['visual_index'] if campaign_map else -1 }}">
+        <span class="scene-kicker">TEMPORADA 1 · ATO {{ season_act or '—' }} · FASE {{ character['current_phase'] }}/{{ season_phase_limit }}</span>
+        <h2>{{ campaign_map['name'] if campaign_map else 'Temporada 1 concluída' }}</h2>
+        <p>{{ mission_difficulty_label }} · dez ondas nesta fase · campanha até a fase {{ season_phase_limit }}.</p>
+      </section>
+
+      <aside class="controls-card">
+        <div class="control-icon" aria-hidden="true">⌘</div>
+        <div>
+          <strong>Mover e mirar</strong>
+          <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><i>ou</i><kbd>↑</kbd><kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd></span>
+        </div>
+        <span class="controls-hint">{{ 'Alvo na direção do movimento' if control_options['scheme'] == 'keyboard_only' else 'Mouse aponta a direção' }}</span>
+      </aside>
+
+      <aside class="active-card-panel" aria-label="Cartas temporárias ativas">
+        <div class="active-card-heading"><strong>Cartas ativas</strong><span>{{ active_cards|length }} / {{ card_limit }}</span></div>
+        <div class="card-xp-progress" aria-label="Experiência da coleção de cartas">
+          <div class="card-xp-copy"><span>EXPERIÊNCIA DA COLEÇÃO</span><strong>{{ card_experience }} / {{ card_experience_needed }}</strong></div>
+          <div class="card-xp-track" role="progressbar" aria-valuenow="{{ card_experience }}" aria-valuemin="0" aria-valuemax="{{ card_experience_needed }}" aria-label="Experiência para liberar uma escolha de carta">
+            <span style="width: {{ (card_experience / card_experience_needed * 100)|round(1) }}%"></span>
+          </div>
+          <small>Recolha orbes dourados no cenário para liberar uma escolha. Cada orbe concede {{ card_experience_orb_value }} de experiência ({{ card_experience_orb_value_premium }} com o benefício especial).</small>
+          {% if pending_card_choices %}<b class="card-xp-ready">Escolha de carta disponível</b>{% endif %}
+        </div>
+        {% if active_cards %}
+          <div class="active-card-list">
+            {% for card in active_cards %}
+              <div class="active-card-chip" style="--rarity-color: {{ card['color'] }}" tabindex="0" title="{{ card['description'] }}" aria-label="{{ card['name'] }} · {{ card['rarity'] }} · {{ card['description'] }}">
+                <span>{{ card['name'] }}</span><small>{{ card['rarity'] }}</small>
+                <span class="active-card-tooltip" role="tooltip">{{ card['description'] }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <p class="no-active-cards">Escolha uma carta antes de iniciar a onda.</p>
+        {% endif %}
+      </aside>
+
+      <div class="coordinates" id="coordinates">X 0000 <span>·</span> Y 0000</div>
+
+      <section class="combat-hud" aria-label="Personagem, progresso, vida, mana e habilidades">
+        <div class="character-progress-row">
+          <canvas class="character-portrait-canvas character-hud-portrait" data-class-id="{{ character['class_id'] }}" aria-label="Retrato de {{ class_info['name'] }}"></canvas>
+          <div class="character-progress-data">
+            <div class="character-progress-heading"><span>NÍVEL <strong id="character-level">{{ character['level'] }}<small> / {{ max_level }}</small></strong></span></div>
+            <div class="experience-track" id="character-experience-track" role="progressbar" aria-label="Experiência para próximo nível" aria-valuemin="0" aria-valuemax="{{ next_level_xp }}" aria-valuenow="{{ character['experience'] }}">
+              <span id="character-experience-fill" style="width: {{ (character['experience'] / next_level_xp * 100) if next_level_xp else 100 }}%"></span>
+            </div>
+            <div class="experience-copy" id="character-experience-copy">{% if character['level'] >= max_level %}Nível máximo atingido{% else %}Experiência {{ character['experience'] }} / {{ next_level_xp }} · faltam {{ next_level_xp - character['experience'] }} para o próximo nível{% endif %}</div>
+          </div>
+        </div>
+        <div class="vital-row"><span>VIDA</span><div class="vital-track health-track"><i id="health-fill" style="width: {{ (character['current_health'] / max_health * 100)|round(1) }}%"></i></div><strong id="health-value">{{ character['current_health'] }} / {{ max_health }}</strong></div>
+        <div class="vital-row"><span>MANA</span><div class="vital-track mana-track"><i id="mana-fill" style="width: {{ (character['current_mana'] / max_mana * 100)|round(1) }}%"></i></div><strong id="mana-value">{{ character['current_mana'] }} / {{ max_mana }}</strong></div>
+        <div class="skill-row">
+          <button type="button" class="skill-slot auto-potion {{ 'is-enabled' if character['auto_health_potion'] and is_premium else '' }} {{ 'is-locked' if not is_premium else '' }}" data-potion="health" data-enabled="{{ 1 if character['auto_health_potion'] else 0 }}" data-premium="{{ 1 if is_premium else 0 }}" aria-pressed="{{ 'true' if character['auto_health_potion'] and is_premium else 'false' }}" title="{{ 'Vida: ativa abaixo de 50%, recupera 30%, recarga de 8s (Q ativa/desativa)' if is_premium else 'Disponível com o benefício especial' }}"><kbd>Q</kbd><b>Poção automática de Vida</b><small>{{ 'Ativa' if character['auto_health_potion'] and is_premium else ('Especial' if not is_premium else 'Desativada') }}</small></button>
+          <button type="button" class="skill-slot" data-skill="basic"><kbd data-hotkey-slot="1">1</kbd><b>Ataque básico</b><small>35 de dano · recarga de 1s</small><i></i></button>
+          {% for slot_number in range(2, 5) %}
+          {% set equipped_skill = equipped_skills[slot_number - 2] %}
+          {% if equipped_skill %}
+          <button type="button" class="skill-slot class-signature-skill{% if equipped_skill.get('ultimate') %} ultimate-skill{% endif %}" data-skill="{{ equipped_skill['id'] }}" data-mana-cost="{{ equipped_skill['mana'] }}" title="{{ equipped_skill['description'] }}"><kbd data-hotkey-slot="{{ slot_number }}">{{ slot_number }}</kbd><b>{{ equipped_skill['name'] }}{% if equipped_skill.get('ultimate') %} · Suprema{% endif %}</b><small>{{ (equipped_skill['damage_multiplier'] * 100)|round|int }}% de dano · {{ equipped_skill['mana'] }} Mana · recarga de {{ equipped_skill['cooldown'] }}s</small><i></i></button>
+          {% else %}
+          <button type="button" class="skill-slot is-empty-skill" data-empty-skill-slot="{{ slot_number }}" disabled><kbd>{{ slot_number }}</kbd><b>Espaço vazio</b><small>Equipe uma habilidade nas opções</small><i></i></button>
+          {% endif %}
+          {% endfor %}
+          <div class="skill-slot" data-skill="dash"><kbd>ESPAÇO</kbd><b>Avanço</b><small>Recarga de 3s</small><i></i></div>
+          <button type="button" class="skill-slot auto-potion {{ 'is-enabled' if character['auto_mana_potion'] and is_premium else '' }} {{ 'is-locked' if not is_premium else '' }}" data-potion="mana" data-enabled="{{ 1 if character['auto_mana_potion'] else 0 }}" data-premium="{{ 1 if is_premium else 0 }}" aria-pressed="{{ 'true' if character['auto_mana_potion'] and is_premium else 'false' }}" title="{{ 'Mana: ativa abaixo de 30%, recupera 40%, recarga de 12s (E ativa/desativa)' if is_premium else 'Disponível com o benefício especial' }}"><kbd>E</kbd><b>Poção automática de Mana</b><small>{{ 'Ativa' if character['auto_mana_potion'] and is_premium else ('Especial' if not is_premium else 'Desativada') }}</small></button>
+        </div>
+      </section>
+
+      {% if card_choices %}
+      <div class="card-draft-backdrop" id="card-draft-backdrop" hidden>
+        <section class="card-draft-dialog" role="dialog" aria-modal="false" aria-labelledby="card-draft-title">
+          <span class="scene-kicker">FASE {{ character['current_phase'] }} · ONDA {{ character['current_wave'] }}</span>
+          <h2 id="card-draft-title">Escolha uma carta</h2>
+          {% if is_premium %}
+          <p class="card-auto-countdown">A recomendada, calculada por classe, efeitos e raridade, será ativada em <strong id="card-auto-countdown">10s</strong> se você não escolher. Cada oferta tem seu próprio prazo.</p>
+          {% else %}
+          <p class="card-manual-choice">Escolha no seu tempo. A carta recomendada está destacada.</p>
+          {% endif %}
+          <div class="card-offer-grid">
+            {% for card in card_choices %}
+            <button class="offered-card{{ ' is-recommended' if card['id'] == recommended_card_id else '' }}" type="button" data-card-id="{{ card['id'] }}" data-offer-id="{{ card_offer_id }}" data-card-details='{{ card|tojson }}' style="--rarity-color: {{ card['color'] }}">
+              {% if card['id'] == recommended_card_id %}<span class="offered-card-recommendation">RECOMENDADA</span>{% endif %}
+              <span class="offered-card-rarity">{{ card['rarity'] }}</span>
+              <strong>{{ card['name'] }}</strong>
+              <span class="offered-card-category">{{ card['category'] }}</span>
+              <span class="offered-card-description">{{ card['description'] }}</span>
+              <span class="offered-card-select">Escolher carta</span>
+            </button>
+            {% endfor %}
+          </div>
+          {% if active_cards|length >= card_limit %}
+          <form method="post" action="{{ url_for('game.choose_card') }}" class="keep-offer-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <button class="keep-offer-button" type="submit" name="skip_replacement" value="1" data-card-keep-offer="{{ card_offer_id }}">Manter cartas ativas · descartar estas 3 opções</button>
+          </form>
+          {% endif %}
+        </section>
+      </div>
+      {% elif selected_offer_card %}
+      <div class="card-draft-backdrop" id="card-draft-backdrop" hidden>
+        <section class="card-draft-dialog replacement-dialog" role="dialog" aria-modal="false" aria-labelledby="replace-card-title">
+          <span class="scene-kicker">COLEÇÃO CHEIA</span>
+          <h2 id="replace-card-title">Escolha a carta que sairá</h2>
+          <p>Nova carta: {{ selected_offer_card['name'] }} · {{ selected_offer_card['rarity'] }}. Marque uma carta ativa e confirme a substituição.</p>
+          <form method="post" action="{{ url_for('game.choose_card') }}" class="replace-card-form" data-offer-id="{{ card_offer_id }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+            <input type="hidden" name="selected_card_id" value="{{ selected_offer_card['id'] }}" />
+            <strong class="replacement-selection-prompt">Clique na carta ativa que deseja remover</strong>
+            <div class="replacement-card-options">
+              {% for card in replacement_cards %}
+              <label class="replacement-card-choice" style="--rarity-color: {{ card['color'] }}"><input type="radio" name="replacement_card_id" value="{{ card['id'] }}" required /><small>{{ card['rarity'] }}</small><strong>{{ card['name'] }}</strong><span class="replacement-card-effect">Efeito atual: {{ card['description'] }}</span></label>
+              {% endfor %}
+            </div>
+            <button class="primary-button" type="submit">Substituir e ativar</button>
+            <button class="keep-cards-button" type="submit" name="skip_replacement" value="1" formnovalidate>Manter cartas ativas · descartar opções</button>
+          </form>
+        </section>
+      </div>
+      {% endif %}
+    </main>
+    <div id="card-xp-orbs" hidden data-orbs='{{ xp_orbs|tojson }}' data-enemies='{{ enemies|tojson }}' data-active-cards='{{ active_cards|tojson }}' data-active-card-count="{{ active_cards|length }}" data-card-limit="{{ card_limit }}" data-pending-card-choices="{{ pending_card_choices }}" data-card-offer-id="{{ card_offer_id }}" data-card-offer-revision="{{ card_offer_revision }}" data-card-offer-resolved="{{ 1 if card_offer_resolved else 0 }}" data-card-replacement-pending="{{ 1 if selected_offer_card else 0 }}" data-card-recommended-id="{{ recommended_card_id }}" data-card-auto-pick-at="{{ card_auto_pick_at }}" data-premium="{{ 1 if is_premium else 0 }}" data-base-attack-range="{{ base_attack_range }}" data-base-skill-range="{{ base_skill_range }}" data-phase-preparation-until="{{ character['phase_preparation_until'] }}" data-awaiting-phase-choice="{{ 1 if character['phase_intermission'] else 0 }}" data-awaiting-death-choice="{{ 1 if character['death_intermission'] else 0 }}" data-agility="{{ agility }}" data-move-speed-multiplier="{{ move_speed_multiplier }}" data-attack-range-multiplier="{{ attack_range_multiplier }}" data-cooldown-multiplier="{{ cooldown_multiplier }}" data-control-scheme="{{ control_options['scheme'] }}" data-mouse-left-slot="{{ control_options['mouse_left_slot'] }}" data-mouse-right-slot="{{ control_options['mouse_right_slot'] }}" data-skill-slots='{{ control_options['skill_slots']|tojson }}' data-csrf-token="{{ csrf_token() }}"></div>
+    <script type="application/json" id="mission-dialogue-hooks">{{ dialogue_hooks|tojson }}</script>
+    <script type="application/json" id="terminal-vilar-collision-map">{{ terminal_vilar_colliders|tojson }}</script>
+    <script type="application/json" id="terminal-vilar-map-config">{{ terminal_vilar_map_config|tojson }}</script>
+    <script src="{{ url_for('static', filename='js/vendor/socket.io.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/portrait.js', v='0.99') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/terminal-vilar-effects.js', v='0.139') }}" defer></script>
+    <script src="{{ url_for('static', filename='js/game.js', v='0.139') }}" defer></script>
+  </body>
+</html>

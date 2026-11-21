@@ -1,0 +1,13 @@
+{
+  "name": "cronicas-do-recomeco-client-tests",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test:js": "node --test tests/js/browser-flows.test.cjs tests/js/mission-app-e2e.test.cjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.65.1"
+  }
+}

@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="pt-BR" class="lobby-document">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Espólios da missão — Crônicas do Recomeço</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css', v='0.124') }}" />
+  </head>
+  <body class="lobby-page">
+    <dialog class="mission-completion-dialog" id="mission-completion-dialog" aria-labelledby="mission-completion-title" aria-modal="true">
+      <span class="scene-kicker">{{ difficulty_label|upper }} · FASE {{ run['phase'] }}</span>
+      <h1 id="mission-completion-title">Missão concluída</h1>
+      <div class="mission-result-stats">
+        <span><small>TEMPO</small><strong>{{ '%02d:%02d'|format((run['completion_time_seconds'] // 60)|int, (run['completion_time_seconds'] % 60)|int) }}</strong></span>
+        <span><small>OURO DA MISSÃO</small><strong>{{ mission_reward_gold_display }} Ouro</strong></span>
+        <span><small>SALDO DE OURO DA CONTA</small><strong>{{ gold_display }} Ouro</strong></span>
+      </div>
+      <small class="virtual-currency-note">Ouro é uma moeda virtual do jogo; não representa dinheiro real, não pode ser sacado e não é usado para compras com dinheiro real.</small>
+      <button class="primary-button mission-loot-submit" id="mission-completion-continue" type="button" autofocus>Continuar para os espólios</button>
+    </dialog>
+    <main class="lobby-shell post-mission-shell">
+      <header class="lobby-header">
+        <a class="lobby-brand" href="{{ url_for('game.lobby') }}">
+          <span class="lobby-brand-mark" aria-hidden="true">✦</span>
+          <span><strong>CRÔNICAS DO RECOMEÇO</strong><small>RESULTADO DA MISSÃO</small></span>
+        </a>
+        {% if has_pending_loot %}
+          <span class="switch-character-button is-disabled" aria-disabled="true" title="Resolva os espólios antes de voltar">Sala de Espera bloqueada</span>
+        {% else %}
+          <a class="switch-character-button" href="{{ url_for('game.lobby') }}">Sala de Espera</a>
+        {% endif %}
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}{% for category, message in messages %}<p class="lobby-notice {{ category }}" role="status">{{ message }}</p>{% endfor %}{% endif %}
+      {% endwith %}
+
+      <section class="lobby-welcome post-mission-welcome">
+        <span class="scene-kicker">{{ difficulty_label|upper }} · FASE {{ run['phase'] }}</span>
+        <h1>Resolva seus espólios</h1>
+        <p>O Ouro da missão já foi creditado na conta. Resgate ou descarte os baús para liberar o retorno à Sala de Espera.</p>
+      </section>
+
+      <div class="post-mission-grid">
+        <section class="lobby-panel inventory-resolution-panel">
+          <div class="lobby-panel-heading">
+            <div><span class="scene-kicker">MOCHILA</span><h2>Itens atuais</h2></div>
+            <span class="inventory-capacity">{{ inventory_count }} / {{ inventory_capacity }}</span>
+          </div>
+          {% if inventory %}
+            <div class="resolution-item-list">
+              {% for item in inventory %}
+              <article class="resolution-item rarity-{{ item['rarity'] }}">
+                <span class="rarity-mark" aria-hidden="true"></span>
+                <span class="resolution-item-copy"><strong>{{ item['item_name'] }}</strong><small>{{ rarity_labels[item['rarity']] }} · venda {{ format_gold(item['salvage_value_gold']) }} Ouro</small></span>
+                <div class="resolution-item-actions">
+                  <form method="post" action="{{ url_for('game.inventory_item_action') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                    <input type="hidden" name="item_id" value="{{ item['id'] }}" />
+                    <input type="hidden" name="return_to" value="post_mission" />
+                    <button type="submit" name="action" value="sell">Vender</button>
+                  </form>
+                  <form method="post" action="{{ url_for('game.inventory_item_action') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                    <input type="hidden" name="item_id" value="{{ item['id'] }}" />
+                    <input type="hidden" name="return_to" value="post_mission" />
+                    <button type="submit" name="action" value="discard">Descartar</button>
+                  </form>
+                </div>
+              </article>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="inventory-empty-copy">A mochila está vazia.</p>
+          {% endif %}
+        </section>
+
+        <section class="lobby-panel mission-loot-panel">
+          <div class="lobby-panel-heading">
+            <div><span class="scene-kicker">ESPÓLIOS</span><h2>Baús da fase</h2></div>
+            <span class="inventory-capacity">{{ run['chest_count'] }} baú(s)</span>
+          </div>
+          {% if loot|selectattr('status', 'equalto', 'pending')|list %}
+            <form method="post" action="{{ url_for('game.resolve_mission_loot') }}" id="mission-loot-form"
+              data-inventory-count="{{ inventory_count }}" data-inventory-capacity="{{ inventory_capacity }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+              <input type="hidden" name="run_id" value="{{ run['id'] }}" />
+              <p class="loot-instructions">Marque os itens que deseja manter. Você pode vender ou descartar itens antigos para abrir espaço.</p>
+              <div class="resolution-item-list">
+                {% for item in loot %}
+                  {% if item['status'] == 'pending' %}
+                  <label class="resolution-item loot-item rarity-{{ item['rarity'] }}">
+                    <input type="checkbox" name="keep_item_ids" value="{{ item['id'] }}" checked />
+                    <span class="rarity-mark" aria-hidden="true"></span>
+                    <span class="resolution-item-copy"><strong>{{ item['item_name'] }}</strong><small>{{ rarity_labels[item['rarity']] }} · venderia por {{ format_gold(item['salvage_value_gold']) }} Ouro</small></span>
+                  </label>
+                  {% else %}
+                  <article class="resolution-item rarity-{{ item['rarity'] }} is-resolved">
+                    <span class="rarity-mark" aria-hidden="true"></span>
+                    <span class="resolution-item-copy"><strong>{{ item['item_name'] }}</strong><small>{{ rarity_labels[item['rarity']] }} · {{ 'resgatado' if item['status'] == 'claimed' else 'descartado' }}</small></span>
+                  </article>
+                  {% endif %}
+                {% endfor %}
+              </div>
+              <p class="capacity-feedback" id="capacity-feedback" role="status"></p>
+              <button class="primary-button mission-loot-submit" id="mission-loot-submit" type="submit">Confirmar espólios e retornar</button>
+            </form>
+          {% else %}
+            <div class="resolution-item-list">
+              {% for item in loot %}
+              <article class="resolution-item rarity-{{ item['rarity'] }} is-resolved">
+                <span class="rarity-mark" aria-hidden="true"></span>
+                <span class="resolution-item-copy"><strong>{{ item['item_name'] }}</strong><small>{{ rarity_labels[item['rarity']] }} · {{ 'resgatado' if item['status'] == 'claimed' else 'descartado' }}</small></span>
+              </article>
+              {% endfor %}
+            </div>
+            <a class="primary-button mission-loot-submit" href="{{ url_for('game.lobby') }}">Voltar à Sala de Espera</a>
+          {% endif %}
+        </section>
+      </div>
+    </main>
+    <script src="{{ url_for('static', filename='js/mission-resolution.js', v='0.124') }}" defer></script>
+  </body>
+</html>

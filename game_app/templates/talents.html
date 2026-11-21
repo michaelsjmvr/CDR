@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="pt-BR" class="character-document">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080b12" />
+    <title>{{ tree_data['title'] }} — Crônicas do Recomeço</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css', v='0.110') }}" />
+    <script src="{{ url_for('static', filename='js/talents.js', v='0.112') }}" defer></script>
+  </head>
+  <body class="talent-page">
+    <main class="talent-layout">
+      <header class="talent-topbar">
+        <a class="brand character-brand" href="{{ url_for('game.lobby') }}">
+          <span class="brand-mark" aria-hidden="true">✦</span>
+          <span><span class="eyebrow">CRÔNICAS DO</span><strong>Recomeço</strong></span>
+        </a>
+        <div class="talent-character-summary">
+          <span>{{ character['name'] }}</span><i>·</i><span>{{ class_info['name'] }}</span><i>·</i><span>Nível {{ character['level'] }}</span>
+        </div>
+        <a class="switch-character-button" href="{{ url_for('game.lobby') }}">Voltar à Sala de Espera</a>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}<div class="notice {{ category }} talent-notice">{{ message }}</div>{% endfor %}
+      {% endwith %}
+
+      <section class="talent-heading">
+        <div>
+          <span class="scene-kicker">ÁRVORE DE TALENTOS · CLASSE: {{ class_info['archetype']|upper }}</span>
+          <h1>{{ tree_data['title'] }}</h1>
+          <p>{{ tree_data['subtitle'] }}</p>
+        </div>
+        <div class="legacy-point-card">
+          <span>PONTOS DISPONÍVEIS</span>
+          <strong>{{ available_points }}</strong>
+          <small>{{ spent_points }} Pontos de Legado usados · até {{ legacy_points_cap }} disponíveis ao chegar ao nível 400</small>
+        </div>
+      </section>
+
+      <div class="talent-points-note">
+        Cada caminho tem talentos próprios que aprimoram seus atributos e magias. Nesta classe, um caminho completo custa {{ specialization_cost_summary }} Pontos de Legado; no nível 400, você terá recebido 64, o suficiente para concluir qualquer um deles. O total das três opções desta classe é {{ specialization_paths_total_cost }} pontos, mas você só precisa investir no caminho escolhido.
+      </div>
+
+      <section class="specialization-section" aria-label="Evolução de classe">
+        {% if specialization %}
+          <div class="specialization-selected"><span class="scene-kicker">ÚNICO CAMINHO ATIVO</span><h2>{{ specialization['name'] }}</h2><p>{{ specialization['description'] }}</p>
+            <p><strong>Passiva ativa:</strong> {{ specialization['passive']['name'] }} — {{ specialization['passive']['description'] }}</p>
+            <p><strong>Habilidade especial:</strong> {% if specialization_skill_unlocked %}{{ specialization['skill']['name'] }} substituiu sua habilidade comum, {{ specialization['base_skill']['name'] }}.{% else %}{{ specialization['base_skill']['name'] }} continua ativa. Desbloqueie o talento principal para liberar {{ specialization['skill']['name'] }}.{% endif %}</p>
+            {% if is_premium %}<small>Com o benefício especial ativo, você pode trocar de caminho e receber de volta os pontos e atributos investidos no caminho atual.</small><button type="button" class="specialization-unlock-button" data-open-specializations>✦ Trocar caminho de evolução</button>
+            {% else %}<small>Você escolheu este caminho. Para trocá-lo, é preciso ter o benefício especial ativo.</small>{% endif %}
+          </div>
+        {% elif character['level'] >= specialization_unlock_level %}
+          <button type="button" class="specialization-unlock-button" data-open-specializations>✦ Evolução de classe desbloqueada · escolher 1 de 3 caminhos</button>
+        {% else %}
+          <div class="specialization-locked"><strong>Três evoluções de classe</strong><span>No nível {{ specialization_unlock_level }} você escolherá somente uma.</span></div>
+        {% endif %}
+        {% if (character['level'] >= specialization_unlock_level and not specialization) or (specialization and is_premium) %}
+          <dialog class="specialization-dialog" aria-labelledby="specialization-dialog-title">
+            <header><div><span class="scene-kicker">{% if specialization %}BENEFÍCIO ESPECIAL · {{ class_info['name']|upper }}{% else %}NÍVEL {{ specialization_unlock_level }} · {{ class_info['name']|upper }}{% endif %}</span><h2 id="specialization-dialog-title">{% if specialization %}Trocar seu único caminho{% else %}Escolha 1 dos 3 caminhos{% endif %}</h2></div><button type="button" class="specialization-dialog-close" data-close-specializations aria-label="Fechar">×</button></header>
+            <p class="specialization-dialog-warning">{% if specialization %}A troca devolve os pontos e atributos do caminho atual antes de ativar outro.{% else %}Esta escolha define seu único caminho. Leia as três opções antes de confirmar.{% endif %}</p>
+            <div class="specialization-options">
+              {% for option in specializations %}
+              <form method="post" action="{{ url_for('talents.choose_specialization') }}" class="specialization-option {{ 'is-current' if specialization and specialization['id'] == option['id'] else '' }}"
+                    data-name="{{ option['name'] }}" data-description="{{ option['description'] }}"
+                    data-passive-name="{{ option['passive']['name'] }}" data-passive-description="{{ option['passive']['description'] }}"
+                    data-attributes="{{ option['attribute_summary'] }}" data-attribute-cost="{{ option['attribute_cost'] }}"
+                    data-branch-cost="{{ option['branch_cost'] }}" data-base-skill="{{ option['base_skill']['name'] }}"
+                    data-combat-cost="{{ option['combat_cost'] }}" data-other-combat-cost="{{ option['other_combat_cost'] }}"
+                    data-skill-name="{{ option['skill']['name'] }}" data-skill-description="{{ option['skill']['description'] }}"
+                    data-skill-mana="{{ option['skill']['mana'] }}" data-skill-cooldown="{{ option['skill']['cooldown'] }}"
+                    data-skill-damage="{{ (option['skill']['damage_multiplier'] * 100)|round|int }}"
+                    data-keystone-cost="{{ option['keystone_cost'] }}"
+                    data-epic-skills="{{ option['epic_skills']|tojson|forceescape }}"
+                    data-epic-unlock-cost="{{ option['epic_unlock_cost'] }}"
+                    data-spell-upgrade-cost="{{ option['spell_upgrade_cost'] }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                <input type="hidden" name="specialization_id" value="{{ option['id'] }}" />
+                <h3>{{ option['name'] }}{% if specialization and specialization['id'] == option['id'] %} · ATIVO{% endif %}</h3>
+                <p>{{ option['passive']['name'] }} · {{ option['attribute_summary'] }}</p>
+                <p>Caminho completo: {{ option['branch_cost'] }} Pontos de Legado.</p>
+                <p>Habilidade especial: {{ option['skill']['name'] }} · {{ option['skill']['mana'] }} Mana · recarga de {{ option['skill']['cooldown'] }}s</p>
+                <p>Habilidades supremas: {% for epic_skill in option['epic_skills'] %}{{ epic_skill['name'] }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+                <button type="submit" {% if specialization and specialization['id'] == option['id'] %}disabled{% else %}onclick="return confirm('{% if specialization %}Trocar para{% else %}Confirmar{% endif %} {{ option['name'] }}?')"{% endif %}>{% if specialization and specialization['id'] == option['id'] %}Caminho ativo{% elif specialization %}Trocar para este caminho{% else %}Trilhar este caminho{% endif %}</button>
+              </form>
+              {% endfor %}
+            </div>
+            {% set preview_option = specialization or specializations[0] %}
+            <aside class="specialization-preview" id="specialization-preview" aria-live="polite">
+              <span class="scene-kicker">DETALHES DA EVOLUÇÃO · PASSE O MOUSE OU FOQUE UMA OPÇÃO</span>
+              <h3 id="specialization-preview-name">{{ preview_option['name'] }}</h3>
+              <p id="specialization-preview-description">{{ preview_option['description'] }}</p>
+              <div class="specialization-preview-grid">
+                <section><small>PASSIVA {% if not specialization %}· ATIVA AO ESCOLHER{% else %}· PASSIVA DO CAMINHO{% endif %}</small><strong id="specialization-preview-passive-name">{{ preview_option['passive']['name'] }}</strong><p id="specialization-preview-passive">{{ preview_option['passive']['description'] }}</p></section>
+                <section><small>ATRIBUTOS · {{ preview_option['attribute_cost'] }} Pontos de Legado</small><strong id="specialization-preview-attributes">{{ preview_option['attribute_summary'] }}</strong><p id="specialization-preview-branch">Caminho completo: {{ preview_option['branch_cost'] }} Pontos de Legado ({{ preview_option['attribute_cost'] }} em atributos, {{ preview_option['other_combat_cost'] }} em vantagens, {{ preview_option['spell_upgrade_cost'] }} em maestrias de magia, {{ preview_option['epic_unlock_cost'] }} em habilidades supremas e {{ preview_option['keystone_cost'] }} na habilidade especial).</p></section>
+                <section><small>HABILIDADE ESPECIAL · {{ preview_option['keystone_cost'] }} Pontos de Legado</small><strong id="specialization-preview-skill">{{ preview_option['base_skill']['name'] }} → {{ preview_option['skill']['name'] }}</strong><p id="specialization-preview-skill-description">{{ preview_option['skill']['description'] }} Custa {{ preview_option['skill']['mana'] }} Mana e tem recarga de {{ preview_option['skill']['cooldown'] }}s.</p></section>
+                <section><small>HABILIDADES SUPREMAS · {{ preview_option['epic_unlock_cost'] }} Pontos de Legado</small><strong id="specialization-preview-ultimates">{% for epic_skill in preview_option['epic_skills'] %}{{ epic_skill['name'] }}{% if not loop.last %} · {% endif %}{% endfor %}</strong><p id="specialization-preview-ultimates-description">{% for epic_skill in preview_option['epic_skills'] %}{{ epic_skill['description'] }} ({{ epic_skill['mana'] }} Mana; recarga de {{ epic_skill['cooldown'] }}s){% if not loop.last %} {% endif %}{% endfor %}</p></section>
+              </div>
+            </aside>
+          </dialog>
+        {% endif %}
+      </section>
+
+      <section class="talent-graph-section" aria-label="Mapa radial de talentos de {{ class_info['name'] }}">
+        <header class="talent-map-section-heading"><div><span class="scene-kicker">ÁRVORE DA CLASSE · 3 CAMINHOS</span><h2>Talentos da sua evolução</h2><p>Cada caminho corresponde a uma evolução. Depois de escolher, você poderá investir Pontos de Legado somente nele.</p></div></header>
+        <div class="talent-graph-layout">
+          <div class="talent-graph-viewport" tabindex="0" aria-label="Mapa de passivas; use Tab para percorrer os nós">
+            <svg class="talent-graph-map" viewBox="0 0 1200 1200" role="group" aria-label="Árvore com três caminhos de evolução" data-selected-specialization="{{ character['specialization_id'] or '' }}">
+              <g transform="translate(600 600)">
+              <circle class="talent-map-ring" cx="0" cy="0" r="220" />
+              <circle class="talent-map-ring" cx="0" cy="0" r="365" />
+              <circle class="talent-map-ring talent-map-wheel-ring" cx="0" cy="0" r="400" />
+              <circle class="talent-map-ring talent-map-outer-ring" cx="0" cy="0" r="455" />
+              <circle class="talent-map-ring talent-map-spell-ring" cx="0" cy="0" r="570" />
+              <text class="talent-map-core-label" x="0" y="36">{{ core_name|upper }}</text>
+              {% for sector in graph_sectors %}<text class="talent-map-sector-label" x="{{ sector['x'] }}" y="{{ sector['y'] }}">{{ sector['name']|upper }}</text>{% endfor %}
+              {% for edge in graph_edges %}
+              {% set from_node = graph_nodes|selectattr('id', 'equalto', edge['from'])|first %}
+              {% set to_node = graph_nodes|selectattr('id', 'equalto', edge['to'])|first %}
+              <line class="talent-map-edge {{ 'is-connected' if edge['connected'] else '' }} {{ 'is-available' if edge['available'] else '' }}" x1="{{ from_node['x'] }}" y1="{{ from_node['y'] }}" x2="{{ to_node['x'] }}" y2="{{ to_node['y'] }}" />
+              {% endfor %}
+              {% set category_labels = {'small': 'Talento', 'notable': 'Talento especial', 'keystone': 'Habilidade especial', 'socket': 'Espaço de melhoria', 'starting': 'Início da classe', 'ultimate': 'Habilidade suprema', 'spell_upgrade': 'Maestria de magia'} %}
+              {% for node in graph_nodes %}
+              <g class="talent-map-node talent-node-{{ node['category'] }} {{ 'is-purchased' if node['purchased'] else '' }} {{ 'is-current-root' if node['is_current_root'] else '' }} {{ 'is-available' if node['can_purchase'] else '' }} {{ 'is-locked' if not node['can_unlock'] and not node['is_active'] else '' }} {{ 'is-inactive-feature' if not node['allocatable'] else '' }}"
+                 transform="translate({{ node['x'] }},{{ node['y'] }})" data-node-id="{{ node['id'] }}" data-name="{{ node['name'] }}" data-category="{{ node['category'] }}" data-effect="{{ node['effect'] }}" data-cost="{{ node['cost'] }}" data-specialization-id="{{ node.get('specialization_id', '') }}" data-purchased="{{ 1 if node['purchased'] else 0 }}" data-current-root="{{ 1 if node['is_current_root'] else 0 }}" data-can-unlock="{{ 1 if node['can_unlock'] else 0 }}" data-can-purchase="{{ 1 if node['can_purchase'] else 0 }}" data-allocatable="{{ 1 if node['allocatable'] else 0 }}" role="button" tabindex="0" aria-label="{{ node['name'] }} · {{ category_labels.get(node['category'], 'Talento') }} · {{ node['effect'] }}" aria-pressed="false">
+                <title>{{ node['name'] }} — {{ node['effect'] }}</title>
+                <circle class="talent-node-halo" r="{{ 24 if node['category'] in ['keystone', 'ultimate'] else 19 if node['category'] in ['notable', 'starting'] else 15 if node['category'] in ['socket', 'spell_upgrade'] else 10 }}" />
+                <circle class="talent-node-core" r="{{ 14 if node['category'] in ['keystone', 'ultimate'] else 11 if node['category'] in ['notable', 'starting'] else 8 if node['category'] in ['socket', 'spell_upgrade'] else 5 }}" />
+                <text class="talent-node-glyph" y="4">{{ '✦' if node['category'] in ['keystone', 'starting', 'ultimate'] else '✧' if node['category'] in ['notable', 'spell_upgrade'] else '◇' if node['category'] == 'socket' else '•' }}</text>
+              </g>
+              {% endfor %}
+              </g>
+            </svg>
+          </div>
+          <aside class="talent-node-inspector" id="talent-node-inspector" aria-live="polite">
+            {% set initial_node = graph_nodes|selectattr('is_current_root')|first %}
+            {% if not initial_node %}{% set initial_node = graph_nodes|selectattr('can_unlock')|first %}{% endif %}
+            <span class="scene-kicker" id="selected-node-category">{{ category_labels.get(initial_node['category'], 'TALENTO')|upper if initial_node else 'TALENTO' }}</span>
+            <h3 id="selected-node-name">{{ initial_node['name'] if initial_node else 'Escolha uma evolução' }}</h3>
+            <p id="selected-node-effect">{{ initial_node['effect'] if initial_node else 'No nível 100, escolha um dos três caminhos da sua classe.' }}</p>
+            <div class="talent-node-inspector-meta"><span>Custo</span><strong id="selected-node-cost">{% if initial_node and initial_node['is_current_root'] %}Início da classe{% elif initial_node %}{{ initial_node['cost'] }} {{ 'Ponto de Legado' if initial_node['cost'] == 1 else 'Pontos de Legado' }}{% else %}—{% endif %}</strong></div>
+            <form method="post" action="{{ url_for('talents.purchase') }}" id="talent-node-purchase" {% if not initial_node or not initial_node['can_purchase'] %}hidden{% endif %}>
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+              <input type="hidden" name="talent_id" id="selected-talent-id" value="{{ initial_node['id'] if initial_node else '' }}" />
+              <button type="submit">Desbloquear talento</button>
+            </form>
+            <p class="talent-node-inspector-status" id="selected-node-status">{% if initial_node and initial_node['is_current_root'] %}Início comum aos três caminhos{% elif initial_node and initial_node['purchased'] %}Já adquirido{% elif initial_node and not initial_node['allocatable'] %}Este espaço ainda não está disponível.{% elif initial_node and not initial_node['can_unlock'] %}{% if not specialization %}Escolha uma evolução ao alcançar o nível {{ specialization_unlock_level }}.{% elif initial_node.get('specialization_id') != specialization['id'] %}Este é um dos outros dois caminhos e permanece bloqueado.{% else %}Conecte este talento ao caminho escolhido.{% endif %}{% elif initial_node and not initial_node['affordable'] %}Você ainda não tem Pontos de Legado suficientes.{% endif %}</p>
+            <div class="talent-legend"><span><i class="legend-small"></i>Talento</span><span><i class="legend-notable"></i>Especial</span><span><i class="legend-keystone"></i>Habilidade e suprema</span><span><i class="legend-spell"></i>Maestria de magia</span></div>
+          </aside>
+        </div>
+      </section>
+
+      {% if legacy_owned %}<aside class="legacy-talent-history"><strong>Talentos antigos mantidos · {{ legacy_count }}</strong><p>Esses talentos fazem parte da sua progressão anterior e continuam contando para seus Pontos de Legado, mas não podem ser escolhidos nesta árvore.</p></aside>{% endif %}
+      <footer class="talent-footer">Você pode desenvolver somente o caminho escolhido. Ao trocar de caminho com o benefício especial ativo, os talentos, atributos e Pontos de Legado investidos no caminho atual serão devolvidos.</footer>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+instance/
+game_app/instance/
+.conda/
+node_modules/
+*.sqlite3
+*.db
+session.key
+
